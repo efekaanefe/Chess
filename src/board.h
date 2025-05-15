@@ -70,6 +70,29 @@ public:
     }
   }
 
+  void MakeMove(const Move &move) {
+    uint64_t fromMask = 1ULL << move.fromSquare;
+    uint64_t toMask = 1ULL << move.toSquare;
+
+    // Remove captured piece first
+    for (int i = 0; i < 12; i++) {
+      if (bitboards[i] & toMask) {
+        bitboards[i] &= ~toMask;
+      }
+    }
+
+    // Move the piece
+    for (int i = 0; i < 12; i++) {
+      if (bitboards[i] & fromMask) {
+        bitboards[i] &= ~fromMask;
+        bitboards[i] |= toMask;
+        break;
+      }
+    }
+
+    UpdateOccupancies();
+  }
+
   // Possible move generation below
   void UpdateOccupancies() {
     occupancies[0] = occupancies[1] = occupancies[2] = 0ULL;
