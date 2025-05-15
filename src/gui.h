@@ -1,3 +1,6 @@
+#pragma once
+
+#include "board.h"
 #include "raylib.h"
 #include <iostream>
 #include <string>
@@ -6,8 +9,9 @@ class ChessGUI {
 public:
   static constexpr int boardSize = 8; // fixed board size
 
-  ChessGUI(int screenWidth, int screenHeight, int padding = 40)
-      : screenWidth(screenWidth), screenHeight(screenHeight), padding(padding) {
+  ChessGUI(int screenWidth, int screenHeight, Board *board, int padding = 40)
+      : screenWidth(screenWidth), screenHeight(screenHeight), board(board),
+        padding(padding) {
     InitWindow(screenWidth, screenHeight, "Chess Board with Padding");
     squareSize = (screenHeight - 2 * padding) / boardSize;
     SetTargetFPS(60);
@@ -22,6 +26,7 @@ public:
 
       DrawBoard();
       DrawCoordinates();
+      DrawPieces();
       HandleMouseInput();
 
       EndDrawing();
@@ -33,6 +38,10 @@ private:
   int screenHeight;
   int squareSize;
   int padding;
+  Board *board;
+
+  const char *pieceSymbols[12] = {"P", "N", "B", "R", "Q", "K",
+                                  "p", "n", "b", "r", "q", "k"};
 
   void DrawBoard() {
     Color lightColor = {240, 217, 181, 255};
@@ -60,6 +69,23 @@ private:
       int rankX = padding - 25;
       int rankY = padding + i * squareSize + squareSize / 2 - 10;
       DrawText(TextFormat("%c", rankChar), rankX, rankY, 20, DARKGRAY);
+    }
+  }
+
+  void DrawPieces() {
+    for (int i = 0; i < 12; ++i) {
+      uint64_t bitboard = board->bitboards[i];
+      for (int square = 0; square < 64; ++square) {
+        if (bitboard & (1ULL << square)) {
+          int row = 7 - (square / 8); // top-to-bottom
+          int col = square % 8;
+
+          int x = padding + col * squareSize + squareSize / 4;
+          int y = padding + row * squareSize + squareSize / 4;
+
+          DrawText(pieceSymbols[i], x, y, squareSize / 2, BLACK);
+        }
+      }
     }
   }
 
