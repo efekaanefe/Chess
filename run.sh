@@ -1,3 +1,3 @@
 #!/bin/bash
 
-g++ src/*.cpp -lraylib -o main && ./main
+g++ src/*.cpp -lraylib -o app && ./app
