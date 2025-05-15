@@ -89,6 +89,7 @@ public:
         break;
       }
     }
+    whiteToMove = !whiteToMove;
 
     UpdateOccupancies();
   }
@@ -109,11 +110,25 @@ public:
     std::vector<Move> moves;
 
     if (whiteToMove)
-      GeneratePawnMoves(moves, true);
+      GenerateAllMoves(moves, true);
     else
-      GeneratePawnMoves(moves, false);
+      GenerateAllMoves(moves, false);
 
     return moves;
+  }
+
+
+  // Generate all legal moves
+  void GenerateAllMoves(std::vector<Move> &moves, bool white) {
+    moves.clear();
+
+    GeneratePawnMoves(moves, white);
+    GenerateKnightMoves(moves, white);
+    GenerateBishopMoves(moves, white);
+    GenerateRookMoves(moves, white);
+    GenerateQueenMoves(moves, white);
+    GenerateKingMoves(moves, white);
+
   }
 
   void GeneratePawnMoves(std::vector<Move> &moves, bool white) {
@@ -172,4 +187,276 @@ public:
       pawns &= pawns - 1; // clear LSB
     }
   }
+
+  // Knight moves generation
+  void GenerateKnightMoves(std::vector<Move> &moves, bool white) {
+    int knightIndex = white ? 1 : 7;
+    uint64_t knights = bitboards[knightIndex];
+
+    // Knight move patterns (8 possible moves)
+    const int knightOffsets[8] = {-17, -15, -10, -6, 6, 10, 15, 17};
+
+    while (knights) {
+      int from = __builtin_ctzll(knights);
+      uint64_t fromMask = 1ULL << from;
+
+      for (int offset : knightOffsets) {
+        int to = from + offset;
+
+        // Check if the move is valid (on the board)
+        if (to < 0 || to >= 64)
+          continue;
+
+        // Check if knight doesn't move too far horizontally
+        int fromFile = from % 8;
+        int toFile = to % 8;
+        if (abs(fromFile - toFile) > 2)
+          continue;
+
+        uint64_t toMask = 1ULL << to;
+
+        // Check if target square is occupied by a friendly piece
+        bool isFriendly =
+            white ? (occupancies[0] & toMask) : (occupancies[1] & toMask);
+        if (isFriendly)
+          continue;
+
+        // Check if target square is occupied by an enemy piece
+        bool isCapture =
+            white ? (occupancies[1] & toMask) : (occupancies[0] & toMask);
+
+        // Add move
+        moves.emplace_back(from, to, isCapture);
+      }
+
+      knights &= knights - 1; // clear LSB
+    }
+  }
+
+  // Bishop moves generation
+  void GenerateBishopMoves(std::vector<Move> &moves, bool white) {
+    int bishopIndex = white ? 2 : 8;
+    uint64_t bishops = bitboards[bishopIndex];
+
+    // Direction offsets for diagonals
+    const int directions[4] = {-9, -7, 7, 9};
+
+    while (bishops) {
+      int from = __builtin_ctzll(bishops);
+
+      for (int direction : directions) {
+        int to = from;
+
+        while (true) {
+          to += direction;
+
+          // Check if the move is valid (on the board)
+          if (to < 0 || to >= 64)
+            break;
+
+          // Check if bishop doesn't move off the diagonal
+          int fromFile = from % 8;
+          int toFile = to % 8;
+          int fromRank = from / 8;
+          int toRank = to / 8;
+          if (abs(fromFile - toFile) != abs(fromRank - toRank))
+            break;
+
+          uint64_t toMask = 1ULL << to;
+
+          // Check if target square is occupied by a friendly piece
+          bool isFriendly =
+              white ? (occupancies[0] & toMask) : (occupancies[1] & toMask);
+          if (isFriendly)
+            break;
+
+          // Check if target square is occupied by an enemy piece
+          bool isCapture =
+              white ? (occupancies[1] & toMask) : (occupancies[0] & toMask);
+
+          // Add move
+          moves.emplace_back(from, to, isCapture);
+
+          // Stop if we hit any piece (we can't move through pieces)
+          if (occupancies[2] & toMask)
+            break;
+        }
+      }
+
+      bishops &= bishops - 1; // clear LSB
+    }
+  }
+
+  // Rook moves generation
+  void GenerateRookMoves(std::vector<Move> &moves, bool white) {
+    int rookIndex = white ? 3 : 9;
+    uint64_t rooks = bitboards[rookIndex];
+
+    // Direction offsets for ranks and files
+    const int directions[4] = {-8, -1, 1, 8};
+
+    while (rooks) {
+      int from = __builtin_ctzll(rooks);
+
+      for (int direction : directions) {
+        int to = from;
+
+        while (true) {
+          to += direction;
+
+          // Check if the move is valid (on the board)
+          if (to < 0 || to >= 64)
+            break;
+
+          // Check if rook doesn't move diagonally
+          // For horizontal moves, make sure we don't wrap around
+          if (direction == -1 || direction == 1) {
+            int fromRank = from / 8;
+            int toRank = to / 8;
+            if (fromRank != toRank)
+              break;
+          }
+
+          uint64_t toMask = 1ULL << to;
+
+          // Check if target square is occupied by a friendly piece
+          bool isFriendly =
+              white ? (occupancies[0] & toMask) : (occupancies[1] & toMask);
+          if (isFriendly)
+            break;
+
+          // Check if target square is occupied by an enemy piece
+          bool isCapture =
+              white ? (occupancies[1] & toMask) : (occupancies[0] & toMask);
+
+          // Add move
+          moves.emplace_back(from, to, isCapture);
+
+          // Stop if we hit any piece (we can't move through pieces)
+          if (occupancies[2] & toMask)
+            break;
+        }
+      }
+
+      rooks &= rooks - 1; // clear LSB
+    }
+  }
+
+  // Queen moves generation (combination of rook and bishop moves)
+  void GenerateQueenMoves(std::vector<Move> &moves, bool white) {
+    int queenIndex = white ? 4 : 10;
+    uint64_t queens = bitboards[queenIndex];
+
+    // Direction offsets for all 8 directions
+    const int directions[8] = {-9, -8, -7, -1, 1, 7, 8, 9};
+
+    while (queens) {
+      int from = __builtin_ctzll(queens);
+
+      for (int direction : directions) {
+        int to = from;
+
+        while (true) {
+          to += direction;
+
+          // Check if the move is valid (on the board)
+          if (to < 0 || to >= 64)
+            break;
+
+          // Check move validity based on direction type
+          int fromFile = from % 8;
+          int toFile = to % 8;
+          int fromRank = from / 8;
+          int toRank = to / 8;
+
+          // For horizontal moves, make sure we don't wrap around
+          if (direction == -1 || direction == 1) {
+            if (fromRank != toRank)
+              break;
+          }
+
+          // For diagonal moves, ensure we stay on the diagonal
+          if (direction == -9 || direction == -7 || direction == 7 ||
+              direction == 9) {
+            if (abs(fromFile - toFile) != abs(fromRank - toRank))
+              break;
+          }
+
+          uint64_t toMask = 1ULL << to;
+
+          // Check if target square is occupied by a friendly piece
+          bool isFriendly =
+              white ? (occupancies[0] & toMask) : (occupancies[1] & toMask);
+          if (isFriendly)
+            break;
+
+          // Check if target square is occupied by an enemy piece
+          bool isCapture =
+              white ? (occupancies[1] & toMask) : (occupancies[0] & toMask);
+
+          // Add move
+          moves.emplace_back(from, to, isCapture);
+
+          // Stop if we hit any piece (we can't move through pieces)
+          if (occupancies[2] & toMask)
+            break;
+        }
+      }
+
+      queens &= queens - 1; // clear LSB
+    }
+  }
+
+  // King moves generation
+  void GenerateKingMoves(std::vector<Move> &moves, bool white) {
+    int kingIndex = white ? 5 : 11;
+    uint64_t kings = bitboards[kingIndex];
+
+    // All 8 directions for king movement
+    const int directions[8] = {-9, -8, -7, -1, 1, 7, 8, 9};
+
+    while (kings) {
+      int from = __builtin_ctzll(kings);
+
+      for (int direction : directions) {
+        int to = from + direction;
+
+        // Check if the move is valid (on the board)
+        if (to < 0 || to >= 64)
+          continue;
+
+        // Check edge cases for horizontal and diagonal moves
+        int fromFile = from % 8;
+        int toFile = to % 8;
+
+        // Prevent wraparound on horizontal moves
+        if ((direction == -1 || direction == 1) && (abs(fromFile - toFile) > 1))
+          continue;
+
+        // Prevent wraparound on diagonal moves
+        if ((direction == -9 || direction == -7 || direction == 7 ||
+             direction == 9) &&
+            (abs(fromFile - toFile) > 1))
+          continue;
+
+        uint64_t toMask = 1ULL << to;
+
+        // Check if target square is occupied by a friendly piece
+        bool isFriendly =
+            white ? (occupancies[0] & toMask) : (occupancies[1] & toMask);
+        if (isFriendly)
+          continue;
+
+        // Check if target square is occupied by an enemy piece
+        bool isCapture =
+            white ? (occupancies[1] & toMask) : (occupancies[0] & toMask);
+
+        // Add regular move
+        moves.emplace_back(from, to, isCapture);
+      }
+
+      kings &= kings - 1; // clear LSB
+    }
+  }
+
 };

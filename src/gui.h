@@ -45,14 +45,12 @@ private:
   int screenHeight;
   int squareSize;
   int padding;
+  std::unordered_map<int, Texture2D> pieceTextures;
+
   Board *board;
   int selectedSquare = -1; // -1 means no selection
   int clickedSquare = -1;
   std::vector<Move> legalMoves;
-
-  std::vector<int> targetSquares;
-
-  std::unordered_map<int, Texture2D> pieceTextures;
 
   void LoadPieceTextures() {
     std::string names[12] = {"wP", "wN", "wB", "wR", "wQ", "wK",
@@ -76,12 +74,15 @@ private:
       }
     }
 
-    // Highlight possible target squares
-    for (int sq : targetSquares) {
+    for (const auto &move : legalMoves) {
+      // Highlight possible target squares
+      int sq = move.toSquare;
       int file = sq % 8;
       int rank = 7 - (sq / 8); // flip rank for display
+
+      Color color = move.isCapture ? RED : YELLOW;
       DrawRectangle(padding + file * squareSize, padding + rank * squareSize,
-                    (float)squareSize, (float)squareSize, Fade(YELLOW, 0.4f));
+                    (float)squareSize, (float)squareSize, Fade(color, 0.4f));
     }
   }
 
@@ -137,13 +138,11 @@ private:
         if (selectedSquare == -1) {
           // Select piece
           selectedSquare = square;
-          targetSquares.clear();
           legalMoves.clear();
 
           auto allMoves = board->GenerateMoves();
           for (const auto &move : allMoves) {
             if (move.fromSquare == selectedSquare) {
-              targetSquares.push_back(move.toSquare);
               legalMoves.push_back(move);
             }
           }
@@ -164,63 +163,9 @@ private:
           // Clear selection whether a move was made or not
           selectedSquare = -1;
           clickedSquare = -1;
-          targetSquares.clear();
           legalMoves.clear();
         }
       }
     }
   }
-
-  // void HandleMouseInput() {
-  //   if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-  //     Vector2 mouse = GetMousePosition();
-  //     int file = (mouse.x - padding) / squareSize;
-  //     int rank = 8 - (mouse.y - padding) / squareSize;
-  //
-  //     if (file >= 0 && file < 8 && rank >= 0 && rank < 8) {
-  //       selectedSquare = rank * 8 + file;
-  //
-  //       std::cout << "Selected square: " << selectedSquare << " (file=" <<
-  //       file
-  //                 << ", rank=" << rank << ")\n";
-  //
-  //       targetSquares.clear();
-  //
-  //       auto moves = board->GenerateMoves();
-  //       for (const auto &move : moves) {
-  //         if (move.fromSquare == selectedSquare) {
-  //           targetSquares.push_back(move.toSquare);
-  //         }
-  //       }
-  //     }
-  //
-  //     // if (file >= 0 && file < 8 && rank >= 0 && rank < 8) {
-  //     //   int square = rank * 8 + file;
-  //     //   selectedSquare = square;
-  //     //
-  //     //   std::string pieceStr = "Empty";
-  //     //   for (int i = 0; i < 12; ++i) {
-  //     //     if (board->bitboards[i] & (1ULL << square)) {
-  //     //       std::string names[12] = {"wP", "wN", "wB", "wR", "wQ", "wK",
-  //     //                                "bP", "bN", "bB", "bR", "bQ", "bK"};
-  //     //       pieceStr = names[i];
-  //     //       break;
-  //     //     }
-  //     //   }
-  //     //   std::cout << pieceStr << std::endl;
-  //     //
-  //     //   // std::cout << "Clicked square: file=" << (char)('a' + file)
-  //     //   //           << ", rank=" << (rank + 1) << ", square=" << square
-  //     //   //           << ", piece=" << pieceStr << std::endl;
-  //     //
-  //     //   auto moves = board->GenerateMoves();
-  //     //   for (const auto &move : moves) {
-  //     //     // std::cout << move.ToString() << std::endl;
-  //     //     if (move.fromSquare == selectedSquare) {
-  //     //       std::cout << "Move: " << move.ToString() << "\n";
-  //     //     }
-  //     //   }
-  //     // }
-  //   }
-  // }
 };
