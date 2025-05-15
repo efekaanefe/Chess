@@ -12,12 +12,18 @@ public:
   ChessGUI(int screenWidth, int screenHeight, Board *board, int padding = 40)
       : screenWidth(screenWidth), screenHeight(screenHeight), board(board),
         padding(padding) {
-    InitWindow(screenWidth, screenHeight, "Chess Board with Padding");
+    InitWindow(screenWidth, screenHeight, "Chess Board");
     squareSize = (screenHeight - 2 * padding) / boardSize;
+    LoadPieceTextures();
     SetTargetFPS(60);
   }
 
-  ~ChessGUI() { CloseWindow(); }
+  ~ChessGUI() {
+    for (auto &[_, tex] : pieceTextures) {
+      UnloadTexture(tex);
+    }
+    CloseWindow();
+  }
 
   void Run() {
     while (!WindowShouldClose()) {
@@ -40,8 +46,17 @@ private:
   int padding;
   Board *board;
 
-  const char *pieceSymbols[12] = {"P", "N", "B", "R", "Q", "K",
-                                  "p", "n", "b", "r", "q", "k"};
+  std::unordered_map<int, Texture2D> pieceTextures;
+
+  void LoadPieceTextures() {
+    std::string names[12] = {"wP", "wN", "wB", "wR", "wQ", "wK",
+                             "bP", "bN", "bB", "bR", "bQ", "bK"};
+
+    for (int i = 0; i < 12; ++i) {
+      std::string path = "assets/" + names[i] + ".png";
+      pieceTextures[i] = LoadTexture(path.c_str());
+    }
+  }
 
   void DrawBoard() {
     Color lightColor = {240, 217, 181, 255};
@@ -74,16 +89,15 @@ private:
 
   void DrawPieces() {
     for (int i = 0; i < 12; ++i) {
-      uint64_t bitboard = board->bitboards[i];
-      for (int square = 0; square < 64; ++square) {
-        if (bitboard & (1ULL << square)) {
-          int row = 7 - (square / 8); // top-to-bottom
-          int col = square % 8;
-
-          int x = padding + col * squareSize + squareSize / 4;
-          int y = padding + row * squareSize + squareSize / 4;
-
-          DrawText(pieceSymbols[i], x, y, squareSize / 2, BLACK);
+      uint64_t bb = board->bitboards[i];
+      for (int sq = 0; sq < 64; ++sq) {
+        if (bb & (1ULL << sq)) {
+          int row = 7 - (sq / 8);
+          int col = sq % 8;
+          int x = padding + col * squareSize;
+          int y = padding + row * squareSize;
+          DrawTextureEx(pieceTextures[i], {(float)x, (float)y}, 0.0f,
+                        (float)squareSize / pieceTextures[i].width, WHITE);
         }
       }
     }
@@ -91,18 +105,26 @@ private:
 
   void HandleMouseInput() {
     if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-      int mouseX = GetMouseX();
-      int mouseY = GetMouseY();
+      Vector2 mouse = GetMousePosition();
+      int file = (mouse.x - padding) / squareSize;
+      int rank = 8 - (mouse.y - padding) / squareSize;
 
-      // Convert mouse position to board indices
-      int col = (mouseX - padding) / squareSize;
-      int row = (mouseY - padding) / squareSize;
+      if (file >= 0 && file < 8 && rank >= 0 && rank < 8) {
+        int square = rank * 8 + file;
 
-      if (col >= 0 && col < boardSize && row >= 0 && row < boardSize) {
-        char file = 'a' + col;
-        char rank = '8' - row;
+        std::string pieceStr = "Empty";
+        for (int i = 0; i < 12; ++i) {
+          if (board->bitboards[i] & (1ULL << square)) {
+            std::string names[12] = {"wP", "wN", "wB", "wR", "wQ", "wK",
+                                     "bP", "bN", "bB", "bR", "bQ", "bK"};
+            pieceStr = names[i];
+            break;
+          }
+        }
 
-        std::cout << "Clicked on square: " << file << rank << std::endl;
+        std::cout << "Clicked square: " << (char)('a' + file)
+                  <<  (1 + rank) << ", square=" << square
+                  << ", piece=" << pieceStr << std::endl;
       }
     }
   }
