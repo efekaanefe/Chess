@@ -45,6 +45,7 @@ private:
   int squareSize;
   int padding;
   Board *board;
+  int selectedSquare = -1; // -1 means no selection
 
   std::unordered_map<int, Texture2D> pieceTextures;
 
@@ -101,6 +102,13 @@ private:
         }
       }
     }
+    if (selectedSquare != -1) {
+      int selRow = 7 - (selectedSquare / 8);
+      int selCol = selectedSquare % 8;
+      DrawRectangle(padding + selCol * squareSize,
+                    padding + selRow * squareSize, squareSize, squareSize,
+                    Fade(PURPLE, 0.4f));
+    }
   }
 
   void HandleMouseInput() {
@@ -111,6 +119,7 @@ private:
 
       if (file >= 0 && file < 8 && rank >= 0 && rank < 8) {
         int square = rank * 8 + file;
+        selectedSquare = square;
 
         std::string pieceStr = "Empty";
         for (int i = 0; i < 12; ++i) {
@@ -121,10 +130,19 @@ private:
             break;
           }
         }
+        std::cout << pieceStr << std::endl;
 
-        std::cout << "Clicked square: " << (char)('a' + file)
-                  <<  (1 + rank) << ", square=" << square
-                  << ", piece=" << pieceStr << std::endl;
+        // std::cout << "Clicked square: file=" << (char)('a' + file)
+        //           << ", rank=" << (rank + 1) << ", square=" << square
+        //           << ", piece=" << pieceStr << std::endl;
+
+        auto moves = board->GenerateMoves();
+        for (const auto &move : moves) {
+          // std::cout << move.ToString() << std::endl;
+          if (move.fromSquare == selectedSquare) {
+            std::cout << "Move: " << move.ToString() << "\n";
+          }
+        }
       }
     }
   }
