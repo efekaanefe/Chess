@@ -132,7 +132,7 @@ public:
   }
 
   void GeneratePawnMoves(std::vector<Move> &moves, bool white) {
-    int pawnIndex = white ? 0 : 6;
+    int pawnIndex = white ? WP : BP;
     uint64_t pawns = bitboards[pawnIndex];
 
     int direction = white ? 8 : -8;
@@ -190,7 +190,7 @@ public:
 
   // Knight moves generation
   void GenerateKnightMoves(std::vector<Move> &moves, bool white) {
-    int knightIndex = white ? 1 : 7;
+    int knightIndex = white ? WN : BN;
     uint64_t knights = bitboards[knightIndex];
 
     // Knight move patterns (8 possible moves)
@@ -235,7 +235,7 @@ public:
 
   // Bishop moves generation
   void GenerateBishopMoves(std::vector<Move> &moves, bool white) {
-    int bishopIndex = white ? 2 : 8;
+    int bishopIndex = white ? WB : BB;
     uint64_t bishops = bitboards[bishopIndex];
 
     // Direction offsets for diagonals
@@ -289,7 +289,7 @@ public:
 
   // Rook moves generation
   void GenerateRookMoves(std::vector<Move> &moves, bool white) {
-    int rookIndex = white ? 3 : 9;
+    int rookIndex = white ? WR : BR;
     uint64_t rooks = bitboards[rookIndex];
 
     // Direction offsets for ranks and files
@@ -344,7 +344,7 @@ public:
 
   // Queen moves generation (combination of rook and bishop moves)
   void GenerateQueenMoves(std::vector<Move> &moves, bool white) {
-    int queenIndex = white ? 4 : 10;
+    int queenIndex = white ? WQ : BQ;
     uint64_t queens = bitboards[queenIndex];
 
     // Direction offsets for all 8 directions
@@ -409,7 +409,7 @@ public:
 
   // King moves generation
   void GenerateKingMoves(std::vector<Move> &moves, bool white) {
-    int kingIndex = white ? 5 : 11;
+    int kingIndex = white ? WK : BK;
     uint64_t kings = bitboards[kingIndex];
 
     // All 8 directions for king movement
