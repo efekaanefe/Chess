@@ -135,33 +135,54 @@ class ChessGUI {
             Vector2 mouse = GetMousePosition();
             int file = (mouse.x - padding) / squareSize;
             int rank = 8 - ((mouse.y - padding) / squareSize); // flip back
+
             if (file >= 0 && file < 8 && rank >= 0 && rank < 8) {
                 int square = rank * 8 + file;
+
                 if (selectedSquare == -1) {
-                    // Select piece
+                    // Selection stage
+
+                    // Check if square has a piece of side to move
+                    bool validSelection = false;
+
+                    int start = board->whiteToMove == 1 ? 0 : 6;
+                    int end = start + 6;
+
+                    for (int i = start; i < end; i++) {
+                        if (board->bitboards[i] & (1ULL << square)) {
+                            validSelection = true;
+                            break;
+                        }
+                    }
+
+                    if (!validSelection)
+                        return;
+
                     selectedSquare = square;
                     legalMoves.clear();
+
                     auto allMoves = board->GenerateMoves();
                     for (auto &move : allMoves) {
                         if (move.fromSquare == selectedSquare) {
                             legalMoves.push_back(move);
                         }
                     }
+
                 } else {
-                    // Try to make move
+                    // Move stage
                     clickedSquare = square;
                     bool moveMade = false;
+
                     for (auto &move : legalMoves) {
                         if (move.toSquare == clickedSquare) {
-                            moveHistory.push_back(
-                                move); // Store move before making it
+                            moveHistory.push_back(move); // Save move
                             board->MakeMove(move);
                             std::cout << move.ToString() << std::endl;
                             moveMade = true;
                             break;
                         }
                     }
-                    // Clear selection whether a move was made or not
+
                     selectedSquare = -1;
                     clickedSquare = -1;
                     legalMoves.clear();
