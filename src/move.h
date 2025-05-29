@@ -11,6 +11,10 @@ public:
     bool isCastling = false;
     bool isPromotion = false;
     int promotedPiece = -1;  // NOTE: use enum in board for readibility 0–11 for piece type or -1 if not a promotion
+    
+    // Added for undo functionality
+    int capturedPieceType = -1;  // Store what piece was captured (if any)
+    bool previousWhiteToMove = true;  // Store previous turn state
 
     Move(int from, int to,
          bool capture = false,
@@ -45,4 +49,5 @@ public:
         return s;
     }
 };
+
 
