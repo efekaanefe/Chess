@@ -2,6 +2,7 @@
 
 #include "board.h"
 #include "raylib.h"
+#include "search.h"
 #include <iostream>
 #include <ostream>
 #include <string>
@@ -36,6 +37,7 @@ class ChessGUI {
             DrawPieces();
             HandleMouseInput();
             HandleKeyboardInput();
+            HandleAI();
 
             EndDrawing();
         }
@@ -49,10 +51,17 @@ class ChessGUI {
     std::unordered_map<int, Texture2D> pieceTextures;
 
     Board *board;
+
     int selectedSquare = -1; // -1 means no selection
     int clickedSquare = -1;
     std::vector<Move> legalMoves;
     std::vector<Move> moveHistory;
+
+    // AI config
+    bool aiEnabled = true;
+    bool aiPlaysAsWhite = false;
+    int aiDepth = 10;
+    SearchEngine engine;
 
     void LoadPieceTextures() {
         std::string names[12] = {"wP", "wN", "wB", "wR", "wQ", "wK",
@@ -130,14 +139,79 @@ class ChessGUI {
         }
     }
 
+    void HandleAI() {
+        // Check if it's AI's turn
+        bool isAITurn = aiEnabled && (board->whiteToMove == aiPlaysAsWhite);
+        if (isAITurn) {
+            // Generate moves to check if game is over
+            auto moves = board->GenerateMoves();
+            std::cout << "=== AI Debug Info ===" << std::endl;
+            std::cout << "Generated " << moves.size() << " moves" << std::endl;
+            std::cout << "Current turn: "
+                      << (board->whiteToMove ? "White" : "Black") << std::endl;
+            std::cout << "AI plays as: " << (aiPlaysAsWhite ? "White" : "Black")
+                      << std::endl;
+
+            if (moves.empty()) {
+                std::cout << "Game Over - No legal moves!" << std::endl;
+                return;
+            }
+
+            std::cout << "AI thinking using SearchEngine..." << std::endl;
+
+            // Call FindBestMove from the SearchEngine
+            // This will perform the alpha-beta search with iterative deepening
+            SearchEngine::SearchResult result =
+                engine.FindBestMove(*board, aiDepth);
+
+            Move selectedMove = result.bestMove;
+            int bestScore = result.score;
+
+
+            if (selectedMove.fromSquare == 0 && selectedMove.toSquare == 0 &&
+                moves.size() > 0) {
+                selectedMove = moves[0];
+                std::cout << "SearchEngine returned a default move, falling "
+                             "back to first legal move."
+                          << std::endl;
+            }
+
+            std::cout << "AI selected: " << selectedMove.ToString()
+                      << " with score: " << bestScore
+                      << " (searched to depth: " << result.depth
+                      << ", nodes: " << result.nodesSearched << ")"
+                      << std::endl;
+
+            moveHistory.push_back(selectedMove);
+
+            board->MakeMove(selectedMove);
+
+            // Clear any player selection
+            selectedSquare = -1;
+            clickedSquare = -1;
+            legalMoves.clear();
+
+            std::cout << "===================" << std::endl;
+        }
+    }
+
     void HandleMouseInput() {
         if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+
             Vector2 mouse = GetMousePosition();
             int file = (mouse.x - padding) / squareSize;
             int rank = 8 - ((mouse.y - padding) / squareSize); // flip back
 
             if (file >= 0 && file < 8 && rank >= 0 && rank < 8) {
                 int square = rank * 8 + file;
+
+                char file = 'a' + (square % 8);
+                char rank = '1' + (square / 8);
+                std::cout << "Is " << file << rank << " attacked??? "
+                          << std::boolalpha
+                          << board->IsSquareAttacked(square,
+                                                     !board->whiteToMove)
+                          << std::endl;
 
                 if (selectedSquare == -1) {
                     // Selection stage
@@ -206,6 +280,19 @@ class ChessGUI {
             } else {
                 std::cout << "No moves to undo!" << std::endl;
             }
+        }
+        if (IsKeyPressed(KEY_P)) {
+            std::cout << "Attacked squares by "
+                      << (board->whiteToMove ? "black" : "white") << ":\n";
+
+            for (int square = 0; square < 64; ++square) {
+                if (board->IsSquareAttacked(square, !board->whiteToMove)) {
+                    char file = 'a' + (square % 8);
+                    char rank = '1' + (square / 8);
+                    std::cout << file << rank << " ";
+                }
+            }
+            std::cout << std::endl;
         }
     }
 };

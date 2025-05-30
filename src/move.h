@@ -10,7 +10,7 @@ public:
     bool isEnPassant = false;
     bool isCastling = false;
     bool isPromotion = false;
-    int promotedPiece = -1;  // NOTE: use enum in board for readibility 0–11 for piece type or -1 if not a promotion
+    int promotedPiece = -1;  
     
     // Added for undo functionality
     int capturedPieceType = -1;  // Store what piece was captured (if any)

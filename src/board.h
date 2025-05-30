@@ -3,6 +3,7 @@
 #include "move.h"
 #include <bitset>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <string>
 #include <unordered_map>
@@ -38,7 +39,78 @@ class Board {
         {'P', WP}, {'N', WN}, {'B', WB}, {'R', WR}, {'Q', WQ}, {'K', WK},
         {'p', BP}, {'n', BN}, {'b', BB}, {'r', BR}, {'q', BQ}, {'k', BK}};
 
-    Board() = default;
+    // Static attack tables
+    uint64_t pawnAttacks[2][64];    // [color][square]
+    uint64_t knightAttacks[64];     // [square]
+    uint64_t kingAttacks[64];       // [square]
+    bool tablesInitialized = false; // Initialize to false
+
+    // Initialize attack tables
+    void InitializeAttackTables() {
+        if (tablesInitialized)
+            return;
+
+        // Clear tables
+        memset(pawnAttacks, 0, sizeof(pawnAttacks));
+        memset(knightAttacks, 0, sizeof(knightAttacks));
+        memset(kingAttacks, 0, sizeof(kingAttacks));
+
+        // Precompute pawn attacks
+        for (int sq = 0; sq < 64; ++sq) {
+            int rank = sq / 8, file = sq % 8;
+
+            // White pawn attacks (attacking upward)
+            if (rank < 7) {
+                if (file > 0)
+                    pawnAttacks[0][sq] |= 1ULL << (sq + 7); // Left diagonal
+                if (file < 7)
+                    pawnAttacks[0][sq] |= 1ULL << (sq + 9); // Right diagonal
+            }
+
+            // Black pawn attacks (attacking downward)
+            if (rank > 0) {
+                if (file > 0)
+                    pawnAttacks[1][sq] |= 1ULL << (sq - 9); // Left diagonal
+                if (file < 7)
+                    pawnAttacks[1][sq] |= 1ULL << (sq - 7); // Right diagonal
+            }
+        }
+
+        // Precompute knight and king attacks
+        static const int knightDirs[] = {-17, -15, -10, -6, 6, 10, 15, 17};
+        static const int kingDirs[] = {-9, -8, -7, -1, 1, 7, 8, 9};
+
+        for (int sq = 0; sq < 64; ++sq) {
+            int file = sq % 8;
+
+            // Knight attacks
+            for (int dir : knightDirs) {
+                int target = sq + dir;
+                if (target >= 0 && target < 64) {
+                    int targetFile = target % 8;
+                    if (abs(file - targetFile) <= 2) { // Prevent wraparound
+                        knightAttacks[sq] |= 1ULL << target;
+                    }
+                }
+            }
+
+            // King attacks
+            for (int dir : kingDirs) {
+                int target = sq + dir;
+                if (target >= 0 && target < 64) {
+                    int targetFile = target % 8;
+                    if (abs(file - targetFile) <= 1) { // Prevent wraparound
+                        kingAttacks[sq] |= 1ULL << target;
+                    }
+                }
+            }
+        }
+
+        tablesInitialized = true;
+    }
+
+    // Constructor - initializes attack tables
+    Board() { InitializeAttackTables(); }
 
     void LoadFEN(const std::string &fen) {
         size_t index = 0;
@@ -448,9 +520,8 @@ class Board {
         }
     }
 
-    // King moves generation
     void GenerateKingMoves(std::vector<Move> &moves, bool white) {
-        int kingIndex = white ? WK : BK;
+        int kingIndex = white ? 5 : 11; // WK or BK
         uint64_t kings = bitboards[kingIndex];
 
         // All 8 directions for king movement
@@ -466,38 +537,137 @@ class Board {
                 if (to < 0 || to >= 64)
                     continue;
 
-                // Check edge cases for horizontal and diagonal moves
                 int fromFile = from % 8;
                 int toFile = to % 8;
 
-                // Prevent wraparound on horizontal moves
-                if ((direction == -1 || direction == 1) &&
-                    (abs(fromFile - toFile) > 1))
-                    continue;
-
-                // Prevent wraparound on diagonal moves
-                if ((direction == -9 || direction == -7 || direction == 7 ||
-                     direction == 9) &&
-                    (abs(fromFile - toFile) > 1))
+                // Prevent wraparound on horizontal and diagonal moves
+                if (abs(fromFile - toFile) > 1)
                     continue;
 
                 uint64_t toMask = 1ULL << to;
 
-                // Check if target square is occupied by a friendly piece
+                // Skip move if destination is occupied by a friendly piece
                 bool isFriendly = white ? (occupancies[0] & toMask)
                                         : (occupancies[1] & toMask);
                 if (isFriendly)
                     continue;
 
-                // Check if target square is occupied by an enemy piece
+                // Skip move if target square is attacked
+                if (IsSquareAttacked(to, !white))
+                    continue;
+
+                // Check if it's a capture move
                 bool isCapture = white ? (occupancies[1] & toMask)
                                        : (occupancies[0] & toMask);
 
-                // Add regular move
+                // Add legal king move
                 moves.emplace_back(from, to, isCapture);
             }
 
             kings &= kings - 1; // clear LSB
         }
+    }
+
+    bool IsKingInCheck(bool forWhiteKing) {
+        int kingSquare;
+        if (forWhiteKing) {
+            // Find the white king's square
+            uint64_t whiteKingBitboard = bitboards[WK];
+            if (whiteKingBitboard == 0) {
+                // This case should ideally not happen in a legal game state.
+                // Maybe handle as an error or return true/false based on
+                // context. For now, return false (no king means no check).
+                return false;
+            }
+            kingSquare = __builtin_ctzll(whiteKingBitboard);
+
+            // Check if the white king's square is attacked by black pieces
+            return IsSquareAttacked(kingSquare,
+                                    false); // 'false' indicates by Black
+        } else {
+            // Find the black king's square
+            uint64_t blackKingBitboard = bitboards[BK];
+            if (blackKingBitboard == 0) {
+                // Similar to above, should not happen.
+                return false;
+            }
+            kingSquare = __builtin_ctzll(blackKingBitboard);
+
+            // Check if the black king's square is attacked by white pieces
+            return IsSquareAttacked(kingSquare,
+                                    true); // 'true' indicates by White
+        }
+    }
+
+    // Fixed square attack detection
+    bool IsSquareAttacked(int square, bool byWhite) {
+        int base = byWhite ? 0 : 6;
+
+        uint64_t pawns = bitboards[base];
+        while (pawns) {
+            int pawnSq = __builtin_ctzll(pawns);
+            // Use byWhite as the color index (0 for white, 1 for black)
+            if (pawnAttacks[byWhite ? 0 : 1][pawnSq] & (1ULL << square))
+                return true;
+            pawns &= pawns - 1;
+        }
+
+        // Check knights
+        if (knightAttacks[square] & bitboards[base + 1])
+            return true;
+
+        // Check king
+        if (kingAttacks[square] & bitboards[base + 5])
+            return true;
+
+        // Check bishops and queen (diagonal attacks)
+        uint64_t diagonalAttacks = GetBishopAttacks(square, occupancies[2]);
+        if (diagonalAttacks & (bitboards[base + 2] | bitboards[base + 4]))
+            return true;
+
+        // Check rooks and queen (straight attacks)
+        uint64_t straightAttacks = GetRookAttacks(square, occupancies[2]);
+        if (straightAttacks & (bitboards[base + 3] | bitboards[base + 4]))
+            return true;
+
+        return false;
+    }
+
+    uint64_t GetBishopAttacks(int square, uint64_t blockers) {
+        uint64_t attacks = 0ULL;
+        int r = square / 8, f = square % 8;
+        // Four diagonal directions: NE, NW, SE, SW
+        int dirs[][2] = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+
+        for (auto &d : dirs) {
+            for (int tr = r + d[0], tf = f + d[1];
+                 tr >= 0 && tr <= 7 && tf >= 0 && tf <= 7;
+                 tr += d[0], tf += d[1]) {
+                int sq = tr * 8 + tf;
+                attacks |= 1ULL << sq;
+                if (blockers & (1ULL << sq))
+                    break;
+            }
+        }
+        return attacks;
+    }
+
+    uint64_t GetRookAttacks(int square, uint64_t blockers) {
+        uint64_t attacks = 0ULL;
+        int r = square / 8, f = square % 8;
+        // Four straight directions: N, S, E, W
+        int dirs[][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
+        for (auto &d : dirs) {
+            for (int tr = r + d[0], tf = f + d[1];
+                 tr >= 0 && tr <= 7 && tf >= 0 && tf <= 7;
+                 tr += d[0], tf += d[1]) {
+                int sq = tr * 8 + tf;
+                attacks |= 1ULL << sq;
+                if (blockers & (1ULL << sq))
+                    break;
+            }
+        }
+        return attacks;
     }
 };
