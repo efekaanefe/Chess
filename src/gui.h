@@ -32,12 +32,13 @@ class ChessGUI {
             BeginDrawing();
             ClearBackground(RAYWHITE);
 
+
+            HandleAI();
             DrawBoard();
             DrawCoordinates();
             DrawPieces();
             HandleMouseInput();
             HandleKeyboardInput();
-            HandleAI();
 
             EndDrawing();
         }
@@ -60,7 +61,7 @@ class ChessGUI {
     // AI config
     bool aiEnabled = true;
     bool aiPlaysAsWhite = false;
-    int aiDepth = 10;
+    int aiDepth = 2;
     SearchEngine engine;
 
     void LoadPieceTextures() {
@@ -145,6 +146,12 @@ class ChessGUI {
         if (isAITurn) {
             // Generate moves to check if game is over
             auto moves = board->GenerateMoves();
+
+            if (moves.empty()) {
+                std::cout << "Game Over - No legal moves!" << std::endl;
+                return;
+            }
+
             std::cout << "=== AI Debug Info ===" << std::endl;
             std::cout << "Generated " << moves.size() << " moves" << std::endl;
             std::cout << "Current turn: "
@@ -152,12 +159,20 @@ class ChessGUI {
             std::cout << "AI plays as: " << (aiPlaysAsWhite ? "White" : "Black")
                       << std::endl;
 
-            if (moves.empty()) {
-                std::cout << "Game Over - No legal moves!" << std::endl;
-                return;
-            }
-
             std::cout << "AI thinking using SearchEngine..." << std::endl;
+
+            // Debug: Show current position evaluation
+            int currentEval = Evaluator::Evaluate(*board);
+            std::cout << "Current position eval: " << currentEval << std::endl;
+
+            // Debug: Show evaluations of a few candidate moves
+            for (int i = 0; i < std::min(3, (int)moves.size()); i++) {
+                board->MakeMove(moves[i]);
+                int moveEval = -Evaluator::Evaluate(*board);
+                board->UndoMove(moves[i]);
+                std::cout << "Move " << moves[i].ToString()
+                          << " eval: " << moveEval << std::endl;
+            }
 
             // Call FindBestMove from the SearchEngine
             // This will perform the alpha-beta search with iterative deepening
@@ -166,7 +181,6 @@ class ChessGUI {
 
             Move selectedMove = result.bestMove;
             int bestScore = result.score;
-
 
             if (selectedMove.fromSquare == 0 && selectedMove.toSquare == 0 &&
                 moves.size() > 0) {

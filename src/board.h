@@ -568,7 +568,7 @@ class Board {
         }
     }
 
-    bool IsKingInCheck(bool forWhiteKing) {
+    bool IsInCheck(bool forWhiteKing) {
         int kingSquare;
         if (forWhiteKing) {
             // Find the white king's square
