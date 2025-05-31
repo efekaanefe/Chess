@@ -137,6 +137,24 @@ class Board {
         UpdateOccupancies();
     }
 
+    void Reset() {
+        // Clear all bitboards
+        for (int i = 0; i < 12; ++i) {
+            bitboards[i] = 0;
+        }
+
+        // Clear occupancies
+        occupancies[0] = 0; // white
+        occupancies[1] = 0; // black
+        occupancies[2] = 0; // all
+
+        // Reset to white's turn
+        whiteToMove = true;
+
+        // Load starting position
+        LoadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    }
+
     void PrintBitboards() const {
         const char *pieceNames[] = {
             "White Pawns",   "White Knights", "White Bishops", "White Rooks",
@@ -236,12 +254,51 @@ class Board {
     void GenerateAllMoves(std::vector<Move> &moves, bool white) {
         moves.clear();
 
-        GeneratePawnMoves(moves, white);
-        GenerateKnightMoves(moves, white);
-        GenerateBishopMoves(moves, white);
-        GenerateRookMoves(moves, white);
-        GenerateQueenMoves(moves, white);
-        GenerateKingMoves(moves, white);
+        // Generate all pseudo-legal moves first
+        std::vector<Move> pseudoLegalMoves;
+        GeneratePawnMoves(pseudoLegalMoves, white);
+        GenerateKnightMoves(pseudoLegalMoves, white);
+        GenerateBishopMoves(pseudoLegalMoves, white);
+        GenerateRookMoves(pseudoLegalMoves, white);
+        GenerateQueenMoves(pseudoLegalMoves, white);
+        GenerateKingMoves(pseudoLegalMoves, white);
+
+        // Filter out illegal moves (moves that leave king in check)
+        for (Move &move : pseudoLegalMoves) {
+            if (IsMoveLegal(move, white)) {
+                moves.push_back(move);
+            }
+        }
+    }
+
+    // Check if a move is legal (doesn't leave own king in check)
+    bool IsMoveLegal(Move &move, bool white) {
+        // Make the move temporarily
+        MakeMove(move);
+
+        // Check if our king is in check after this move
+        bool kingInCheck = IsKingInCheck(white);
+
+        // Undo the move
+        UndoMove(move);
+
+        // Move is legal if it doesn't leave our king in check
+        return !kingInCheck;
+    }
+
+    // Check if the king of the specified color is in check
+    bool IsKingInCheck(bool white) {
+        int kingIndex = white ? 5 : 11; // WK or BK
+        uint64_t kingBitboard = bitboards[kingIndex];
+
+        if (kingBitboard == 0)
+            return false; // No king found
+
+        // Find king position
+        int kingSquare = __builtin_ctzll(kingBitboard);
+
+        // Check if king square is attacked by opponent
+        return IsSquareAttacked(kingSquare, !white);
     }
 
     void GeneratePawnMoves(std::vector<Move> &moves, bool white) {
@@ -258,7 +315,7 @@ class Board {
             int to = from + direction;
 
             // Single forward push
-            if (!(occupancies[2] & (1ULL << to))) {
+            if (to >= 0 && to < 64 && !(occupancies[2] & (1ULL << to))) {
                 if (from / 8 == promotionRank) {
                     // Promotion
                     for (int i = 0; i < 4; ++i) {
@@ -282,6 +339,13 @@ class Board {
                 int capTo = white ? from + d : from - d;
                 if (capTo < 0 || capTo >= 64)
                     continue;
+
+                // Check for file wrapping
+                int fromFile = from % 8;
+                int toFile = capTo % 8;
+                if (abs(fromFile - toFile) != 1)
+                    continue;
+
                 uint64_t target = 1ULL << capTo;
                 bool isEnemy = white ? (occupancies[1] & target)
                                      : (occupancies[0] & target);
@@ -367,12 +431,14 @@ class Board {
                     if (to < 0 || to >= 64)
                         break;
 
-                    // Check if bishop doesn't move off the diagonal
+                    // Check if bishop doesn't move off the diagonal (file
+                    // wrapping check)
                     int fromFile = from % 8;
                     int toFile = to % 8;
-                    int fromRank = from / 8;
-                    int toRank = to / 8;
-                    if (abs(fromFile - toFile) != abs(fromRank - toRank))
+                    int fileDiff = abs(fromFile - toFile);
+                    int rankDiff = abs((from / 8) - (to / 8));
+
+                    if (fileDiff != rankDiff || fileDiff > 7)
                         break;
 
                     uint64_t toMask = 1ULL << to;
@@ -488,10 +554,13 @@ class Board {
                             break;
                     }
 
-                    // For diagonal moves, ensure we stay on the diagonal
+                    // For diagonal moves, ensure we stay on the diagonal and
+                    // don't wrap
                     if (direction == -9 || direction == -7 || direction == 7 ||
                         direction == 9) {
-                        if (abs(fromFile - toFile) != abs(fromRank - toRank))
+                        int fileDiff = abs(fromFile - toFile);
+                        int rankDiff = abs(fromRank - toRank);
+                        if (fileDiff != rankDiff || fileDiff > 7)
                             break;
                     }
 
@@ -566,6 +635,19 @@ class Board {
 
             kings &= kings - 1; // clear LSB
         }
+    }
+
+    // Helper method to check if the game is in checkmate or stalemate
+    bool IsCheckmate(bool white) {
+        std::vector<Move> legalMoves;
+        GenerateAllMoves(legalMoves, white);
+        return legalMoves.empty() && IsKingInCheck(white);
+    }
+
+    bool IsStalemate(bool white) {
+        std::vector<Move> legalMoves;
+        GenerateAllMoves(legalMoves, white);
+        return legalMoves.empty() && !IsKingInCheck(white);
     }
 
     bool IsInCheck(bool forWhiteKing) {
