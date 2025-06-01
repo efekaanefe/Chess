@@ -4,12 +4,16 @@
 #include "evaluate.h"
 #include <algorithm>
 #include <climits>
+#include <iomanip>
+#include <iostream>
 #include <vector>
 
 class SearchEngine {
   public:
-    static constexpr int MATE_SCORE = 30000;
     static constexpr int MAX_DEPTH = 50;
+    static const int MAX_EVAL = 100000; // Large value for alpha-beta bounds
+
+    SearchEngine() : nodesSearched(0), nextMove(0, 0) {}
 
     struct SearchResult {
         Move bestMove;
@@ -24,66 +28,85 @@ class SearchEngine {
 
   private:
     int nodesSearched;
+    Move nextMove;
 
-    // Check if position is checkmate or stalemate
-    bool IsGameOver(Board &board, const std::vector<Move> &moves) {
-        return moves.empty();
-    }
-
-    // Improved quiescence search
-    int Quiescence(Board &board, int alpha, int beta) {
+    // Negamax Alpha-Beta implementation matching Python structure
+    int FindMoveNegaMaxAlphaBeta(Board &gs, std::vector<Move> &validMoves,
+                                 int depth, int alpha, int beta,
+                                 int turnMultiplier, int maxDepth) {
         nodesSearched++;
 
-        int standPat = Evaluator::Evaluate(board);
-
-        // Return from white's perspective
-        if (!board.whiteToMove) {
-            standPat = -standPat;
+        if (depth == 0) {
+            return Quiescence(gs, alpha, beta, turnMultiplier);
         }
 
-        if (standPat >= beta) {
-            return beta;
-        }
-        if (alpha < standPat) {
-            alpha = standPat;
-        }
+        int maxScore = -MAX_EVAL;
+        Move localBestMove = validMoves.empty() ? Move(0, 0) : validMoves[0];
 
-        std::vector<Move> moves = board.GenerateMoves();
-        std::vector<Move> captures;
+        for (auto &move : validMoves) {
+            gs.MakeMove(move);
+            std::vector<Move> nextMoves = gs.GenerateMoves();
 
-        for (const auto &move : moves) {
-            if (move.isCapture) {
-                captures.push_back(move);
+            // Negamax recursive call - negate result and swap alpha/beta
+            int score = -FindMoveNegaMaxAlphaBeta(
+                gs, nextMoves, depth - 1, -beta, -alpha, -turnMultiplier, maxDepth);
+
+            if (score > maxScore) {
+                maxScore = score;
+                localBestMove = move;
+
+                // Store best move at root level (check if this is the initial
+                // depth)
+                if (depth == maxDepth) {
+                    nextMove = move;
+                    std::cout << "Best move updated: " << move.ToString()
+                              << " Score: " << std::fixed
+                              << std::setprecision(5) << score << std::endl;
+                }
+            }
+
+            gs.UndoMove(move);
+
+            // Alpha-beta pruning logic
+            if (maxScore > alpha) {
+                alpha = maxScore;
+            }
+
+            if (alpha >= beta) {
+                break; // Beta cutoff
             }
         }
 
-        OrderCaptures(board, captures);
-
-        for (auto &move : captures) {
-            board.MakeMove(move);
-            int score = -Quiescence(board, -beta, -alpha);
-            board.UndoMove(move);
-
-            if (score >= beta) {
-                return beta;
-            }
-            if (score > alpha) {
-                alpha = score;
-            }
-        }
-
-        return alpha;
+        return maxScore;
     }
 
-    void OrderCaptures(Board &board, std::vector<Move> &captures) {
-        std::sort(captures.begin(), captures.end(),
+    // Move ordering functions
+    void OrderMoves(Board &board, std::vector<Move> &moves) {
+        std::sort(moves.begin(), moves.end(),
                   [&](const Move &a, const Move &b) {
-                      int victimA = GetPieceValue(board, a.toSquare);
-                      int victimB = GetPieceValue(board, b.toSquare);
-                      int attackerA = GetPieceValue(board, a.fromSquare);
-                      int attackerB = GetPieceValue(board, b.fromSquare);
+                      // Prioritize captures (MVV-LVA: Most Valuable Victim -
+                      // Least Valuable Attacker)
+                      if (a.isCapture && !b.isCapture)
+                          return true;
+                      if (!a.isCapture && b.isCapture)
+                          return false;
 
-                      return (victimA - attackerA) > (victimB - attackerB);
+                      if (a.isCapture && b.isCapture) {
+                          int victimA = GetPieceValue(board, a.toSquare);
+                          int victimB = GetPieceValue(board, b.toSquare);
+                          int attackerA = GetPieceValue(board, a.fromSquare);
+                          int attackerB = GetPieceValue(board, b.fromSquare);
+
+                          return (victimA - attackerA) > (victimB - attackerB);
+                      }
+
+                      // Prioritize promotions
+                      if (a.isPromotion && !b.isPromotion)
+                          return true;
+                      if (!a.isPromotion && b.isPromotion)
+                          return false;
+
+                      return false;
                   });
     }
 
@@ -97,92 +120,49 @@ class SearchEngine {
         return 0;
     }
 
-    void OrderMoves(Board &board, std::vector<Move> &moves) {
-        std::sort(moves.begin(), moves.end(),
-                  [&](const Move &a, const Move &b) {
-                      // Prioritize captures
-                      if (a.isCapture && !b.isCapture)
-                          return true;
-                      if (!a.isCapture && b.isCapture)
-                          return false;
-
-                      if (a.isCapture && b.isCapture) {
-                          int victimA = GetPieceValue(board, a.toSquare);
-                          int victimB = GetPieceValue(board, b.toSquare);
-                          return victimA > victimB;
-                      }
-
-                      if (a.isPromotion && !b.isPromotion)
-                          return true;
-                      if (!a.isPromotion && b.isPromotion)
-                          return false;
-
-                      return false;
-                  });
-    }
-
-    // Fixed alpha-beta search with proper perspective handling
-    int AlphaBeta(Board &board, int depth, int alpha, int beta, bool maximizing) {
+    // Quiescence search for tactical positions
+    int Quiescence(Board &board, int alpha, int beta, int turnMultiplier) {
         nodesSearched++;
 
-        if (depth == 0) {
-            return Quiescence(board, alpha, beta);
+        int standPat = turnMultiplier * Evaluator::Evaluate(board);
+
+        if (standPat >= beta) {
+            return beta;
+        }
+        if (alpha < standPat) {
+            alpha = standPat;
         }
 
         std::vector<Move> moves = board.GenerateMoves();
+        std::vector<Move> captures;
 
-        if (moves.empty()) {
-            // Check if in check to distinguish mate from stalemate
-            if (board.IsInCheck(board.whiteToMove)) {
-                // Checkmate - return mate score adjusted by depth to prefer faster mates
-                return maximizing ? -MATE_SCORE + (MAX_DEPTH - depth)
-                                  : MATE_SCORE - (MAX_DEPTH - depth);
-            } else {
-                // Stalemate
-                return 0;
+        // Only consider captures in quiescence
+        for (const auto &move : moves) {
+            if (move.isCapture) {
+                captures.push_back(move);
             }
         }
 
-        OrderMoves(board, moves);
+        OrderMoves(board, captures);
 
-        if (maximizing) {
-            int maxEval = INT_MIN;
-            for (auto &move : moves) {
-                board.MakeMove(move);
-                int eval = AlphaBeta(board, depth - 1, alpha, beta, false);
-                board.UndoMove(move);
+        for (auto &move : captures) {
+            board.MakeMove(move);
+            int score = -Quiescence(board, -beta, -alpha, -turnMultiplier);
+            board.UndoMove(move);
 
-                maxEval = std::max(maxEval, eval);
-                alpha = std::max(alpha, eval);
-
-                if (beta <= alpha) {
-                    break; // Beta cutoff
-                }
+            if (score >= beta) {
+                return beta;
             }
-            return maxEval;
-        } else {
-            int minEval = INT_MAX;
-            for (auto &move : moves) {
-                board.MakeMove(move);
-                int eval = AlphaBeta(board, depth - 1, alpha, beta, true);
-                board.UndoMove(move);
-
-                minEval = std::min(minEval, eval);
-                beta = std::min(beta, eval);
-
-                if (beta <= alpha) {
-                    break; // Alpha cutoff
-                }
+            if (score > alpha) {
+                alpha = score;
             }
-            return minEval;
         }
+
+        return alpha;
     }
 
   public:
-    // Fixed iterative deepening search
     SearchResult FindBestMove(Board &board, int maxDepth = 6) {
-        Move bestMove = Move(0, 0);
-        int bestScore = -MATE_SCORE; // Start with worst possible score
         nodesSearched = 0;
 
         std::vector<Move> rootMoves = board.GenerateMoves();
@@ -191,75 +171,31 @@ class SearchEngine {
         }
 
         OrderMoves(board, rootMoves);
-        bestMove = rootMoves[0];
 
-        for (int depth = 1; depth <= maxDepth; depth++) {
-            int currentBestScore = -MATE_SCORE;
-            Move currentBestMove = rootMoves[0];
-            int alpha = -MATE_SCORE;
-            int beta = MATE_SCORE;
+        // Search at root level directly
+        Move bestMove = rootMoves[0];
+        int bestScore = -MAX_EVAL;
+        int turnMultiplier = board.whiteToMove ? 1 : -1;
 
-            for (auto &move : rootMoves) {
-                board.MakeMove(move);
-                // Use negamax approach: negate the result and swap alpha/beta
-                int score = -AlphaBeta(board, depth - 1, -beta, -alpha, false);
-                board.UndoMove(move);
-
-                if (score > currentBestScore) {
-                    currentBestScore = score;
-                    currentBestMove = move;
-                }
-
-                alpha = std::max(alpha, score);
-
-                // Early exit for forced mate
-                if (score >= MATE_SCORE - MAX_DEPTH) {
-                    break;
-                }
-            }
-
-            // Always update the best move found at this depth
-            bestScore = currentBestScore;
-            bestMove = currentBestMove;
-
-            std::cout << "Depth " << depth << ": " << bestMove.ToString()
-                      << " (score: " << bestScore << ")" << std::endl;
-
-            // Early termination for forced mates
-            if (abs(bestScore) >= MATE_SCORE - MAX_DEPTH) {
-                break;
-            }
-        }
-
-        return SearchResult(bestMove, bestScore, maxDepth, nodesSearched);
-    }
-
-    // Fixed single-depth search
-    SearchResult Search(Board &board, int depth) {
-        nodesSearched = 0;
-        std::vector<Move> moves = board.GenerateMoves();
-
-        if (moves.empty()) {
-            return SearchResult();
-        }
-
-        OrderMoves(board, moves);
-
-        Move bestMove = moves[0];
-        int bestScore = -MATE_SCORE;
-
-        for (auto &move : moves) {
+        for (auto &move : rootMoves) {
             board.MakeMove(move);
-            // Use negamax: negate the result since opponent is minimizing
-            int score = -AlphaBeta(board, depth - 1, -MATE_SCORE, MATE_SCORE, false);
+            std::vector<Move> nextMoves = board.GenerateMoves();
+
+            // Search remaining depth
+            int score =
+                -FindMoveNegaMaxAlphaBeta(board, nextMoves, maxDepth - 1,
+                                          -MAX_EVAL, MAX_EVAL, -turnMultiplier, maxDepth);
+
             board.UndoMove(move);
 
             if (score > bestScore) {
                 bestScore = score;
                 bestMove = move;
+                std::cout << "Root: " << move.ToString() << " Score: " << score
+                          << std::endl;
             }
         }
 
-        return SearchResult(bestMove, bestScore, depth, nodesSearched);
+        return SearchResult(bestMove, bestScore, maxDepth, nodesSearched);
     }
 };

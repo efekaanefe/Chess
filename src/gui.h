@@ -1,6 +1,7 @@
 #pragma once
 
 #include "board.h"
+#include "evaluate.h"
 #include "raylib.h"
 #include "search.h"
 #include <iostream>
@@ -32,11 +33,11 @@ class ChessGUI {
             BeginDrawing();
             ClearBackground(RAYWHITE);
 
-            HandleAI();
             DrawBoard();
             DrawCoordinates();
             DrawPieces();
             DrawGameStatus();
+            HandleAI();
             HandleMouseInput();
             HandleKeyboardInput();
 
@@ -69,9 +70,9 @@ class ChessGUI {
     GameState gameState = PLAYING;
 
     // AI config
-    bool aiEnabled = false;
+    bool aiEnabled = true;
     bool aiPlaysAsWhite = false;
-    int aiDepth = 1;
+    int aiDepth = 3;
     SearchEngine engine;
 
     void LoadPieceTextures() {
@@ -91,7 +92,8 @@ class ChessGUI {
         if (moves.empty()) {
             if (inCheck) {
                 // Checkmate
-                return board->whiteToMove ? CHECKMATE_BLACK_WINS : CHECKMATE_WHITE_WINS;
+                return board->whiteToMove ? CHECKMATE_BLACK_WINS
+                                          : CHECKMATE_WHITE_WINS;
             } else {
                 // Stalemate
                 return STALEMATE;
@@ -105,11 +107,13 @@ class ChessGUI {
 
     bool IsInCheck() {
         // Find the king of the current side to move
-        int kingPiece = board->whiteToMove ? 5 : 11; // White king = 5, Black king = 11
+        int kingPiece =
+            board->whiteToMove ? 5 : 11; // White king = 5, Black king = 11
         uint64_t kingBitboard = board->bitboards[kingPiece];
-        
-        if (kingBitboard == 0) return false; // No king found (shouldn't happen)
-        
+
+        if (kingBitboard == 0)
+            return false; // No king found (shouldn't happen)
+
         // Find king position
         int kingSquare = -1;
         for (int sq = 0; sq < 64; sq++) {
@@ -118,9 +122,10 @@ class ChessGUI {
                 break;
             }
         }
-        
-        if (kingSquare == -1) return false;
-        
+
+        if (kingSquare == -1)
+            return false;
+
         // Check if king square is attacked by opponent
         return board->IsSquareAttacked(kingSquare, !board->whiteToMove);
     }
@@ -138,11 +143,40 @@ class ChessGUI {
             }
         }
 
+        // Highlight the selected square
+        if (selectedSquare != -1) {
+            int selRow = 7 - (selectedSquare / 8);
+            int selCol = selectedSquare % 8;
+            DrawRectangle(padding + selCol * squareSize,
+                          padding + selRow * squareSize, squareSize, squareSize,
+                          Fade(PURPLE, 0.4f));
+        }
+
+        // Highlight the last move
+        if (!moveHistory.empty()) {
+            const Move &lastMove = moveHistory.back();
+
+            Color lastMoveColor = {0, 200, 200, 150};
+
+            int fromFile = lastMove.fromSquare % 8;
+            int fromRank = 7 - (lastMove.fromSquare / 8);
+            DrawRectangle(padding + fromFile * squareSize,
+                          padding + fromRank * squareSize, squareSize,
+                          squareSize, lastMoveColor);
+
+            int toFile = lastMove.toSquare % 8;
+            int toRank = 7 - (lastMove.toSquare / 8);
+            DrawRectangle(padding + toFile * squareSize,
+                          padding + toRank * squareSize, squareSize, squareSize,
+                          lastMoveColor);
+        }
+
         // Highlight king in check
-        if (gameState == CHECK || gameState == CHECKMATE_WHITE_WINS || gameState == CHECKMATE_BLACK_WINS) {
+        if (gameState == CHECK || gameState == CHECKMATE_WHITE_WINS ||
+            gameState == CHECKMATE_BLACK_WINS) {
             int kingPiece = board->whiteToMove ? 5 : 11;
             uint64_t kingBitboard = board->bitboards[kingPiece];
-            
+
             for (int sq = 0; sq < 64; sq++) {
                 if (kingBitboard & (1ULL << sq)) {
                     int file = sq % 8;
@@ -199,42 +233,37 @@ class ChessGUI {
                 }
             }
         }
-        if (selectedSquare != -1) {
-            int selRow = 7 - (selectedSquare / 8);
-            int selCol = selectedSquare % 8;
-            DrawRectangle(padding + selCol * squareSize,
-                          padding + selRow * squareSize, squareSize, squareSize,
-                          Fade(PURPLE, 0.4f));
-        }
     }
 
     void DrawGameStatus() {
         gameState = CheckGameState();
-        
+
         std::string statusText;
         Color statusColor = BLACK;
 
         switch (gameState) {
-            case CHECKMATE_WHITE_WINS:
-                statusText = "CHECKMATE! White Wins!";
-                statusColor = GREEN;
-                break;
-            case CHECKMATE_BLACK_WINS:
-                statusText = "CHECKMATE! Black Wins!";
-                statusColor = GREEN;
-                break;
-            case STALEMATE:
-                statusText = "STALEMATE! Draw!";
-                statusColor = ORANGE;
-                break;
-            case CHECK:
-                statusText = std::string(board->whiteToMove ? "White" : "Black") + " is in CHECK!";
-                statusColor = RED;
-                break;
-            case PLAYING:
-                statusText = std::string(board->whiteToMove ? "White" : "Black") + " to move";
-                statusColor = DARKGRAY;
-                break;
+        case CHECKMATE_WHITE_WINS:
+            statusText = "CHECKMATE! White Wins!";
+            statusColor = GREEN;
+            break;
+        case CHECKMATE_BLACK_WINS:
+            statusText = "CHECKMATE! Black Wins!";
+            statusColor = GREEN;
+            break;
+        case STALEMATE:
+            statusText = "STALEMATE! Draw!";
+            statusColor = ORANGE;
+            break;
+        case CHECK:
+            statusText = std::string(board->whiteToMove ? "White" : "Black") +
+                         " is in CHECK!";
+            statusColor = RED;
+            break;
+        case PLAYING:
+            statusText = std::string(board->whiteToMove ? "White" : "Black") +
+                         " to move";
+            statusColor = DARKGRAY;
+            break;
         }
 
         // Draw status text
@@ -244,32 +273,34 @@ class ChessGUI {
         DrawText(statusText.c_str(), textX, textY, 24, statusColor);
 
         // Draw game over overlay if needed
-        if (gameState == CHECKMATE_WHITE_WINS || gameState == CHECKMATE_BLACK_WINS || gameState == STALEMATE) {
+        if (gameState == CHECKMATE_WHITE_WINS ||
+            gameState == CHECKMATE_BLACK_WINS || gameState == STALEMATE) {
             // Semi-transparent overlay
             DrawRectangle(0, 0, screenWidth, screenHeight, Fade(BLACK, 0.5f));
-            
+
             // Game over message
             std::string gameOverText = "GAME OVER";
             int gameOverWidth = MeasureText(gameOverText.c_str(), 48);
-            DrawText(gameOverText.c_str(), (screenWidth - gameOverWidth) / 2, 
+            DrawText(gameOverText.c_str(), (screenWidth - gameOverWidth) / 2,
                      screenHeight / 2 - 60, 48, WHITE);
-            
+
             // Result message
             int resultWidth = MeasureText(statusText.c_str(), 32);
-            DrawText(statusText.c_str(), (screenWidth - resultWidth) / 2, 
+            DrawText(statusText.c_str(), (screenWidth - resultWidth) / 2,
                      screenHeight / 2 - 10, 32, WHITE);
-            
+
             // Instructions
             std::string restartText = "Press 'R' to restart or 'U' to undo";
             int restartWidth = MeasureText(restartText.c_str(), 20);
-            DrawText(restartText.c_str(), (screenWidth - restartWidth) / 2, 
+            DrawText(restartText.c_str(), (screenWidth - restartWidth) / 2,
                      screenHeight / 2 + 40, 20, LIGHTGRAY);
         }
     }
 
     void HandleAI() {
         // Don't let AI play if game is over
-        if (gameState == CHECKMATE_WHITE_WINS || gameState == CHECKMATE_BLACK_WINS || gameState == STALEMATE) {
+        if (gameState == CHECKMATE_WHITE_WINS ||
+            gameState == CHECKMATE_BLACK_WINS || gameState == STALEMATE) {
             return;
         }
 
@@ -296,15 +327,6 @@ class ChessGUI {
             // Debug: Show current position evaluation
             int currentEval = Evaluator::Evaluate(*board);
             std::cout << "Current position eval: " << currentEval << std::endl;
-
-            // Debug: Show evaluations of a few candidate moves
-            for (int i = 0; i < std::min(3, (int)moves.size()); i++) {
-                board->MakeMove(moves[i]);
-                int moveEval = -Evaluator::Evaluate(*board);
-                board->UndoMove(moves[i]);
-                std::cout << "Move " << moves[i].ToString()
-                          << " eval: " << moveEval << std::endl;
-            }
 
             // Call FindBestMove from the SearchEngine
             // This will perform the alpha-beta search with iterative deepening
@@ -343,7 +365,8 @@ class ChessGUI {
 
     void HandleMouseInput() {
         // Don't allow moves if game is over
-        if (gameState == CHECKMATE_WHITE_WINS || gameState == CHECKMATE_BLACK_WINS || gameState == STALEMATE) {
+        if (gameState == CHECKMATE_WHITE_WINS ||
+            gameState == CHECKMATE_BLACK_WINS || gameState == STALEMATE) {
             return;
         }
 
@@ -432,10 +455,8 @@ class ChessGUI {
                 std::cout << "No moves to undo!" << std::endl;
             }
         }
-        
+
         if (IsKeyPressed(KEY_R)) {
-            // Reset game (you'll need to implement board reset functionality)
-            // This assumes your Board class has a Reset() method
             board->Reset();
             moveHistory.clear();
             selectedSquare = -1;
@@ -444,7 +465,7 @@ class ChessGUI {
             gameState = PLAYING;
             std::cout << "Game restarted!" << std::endl;
         }
-        
+
         if (IsKeyPressed(KEY_P)) {
             std::cout << "Attacked squares by "
                       << (board->whiteToMove ? "black" : "white") << ":\n";
@@ -457,6 +478,10 @@ class ChessGUI {
                 }
             }
             std::cout << std::endl;
+        }
+
+        if (IsKeyPressed(KEY_E)) {
+            Evaluator::Evaluate(*board);
         }
     }
 };

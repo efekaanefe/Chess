@@ -2,71 +2,103 @@
 
 #include "board.h"
 #include <cstdint>
+#include <vector>
 
 class Evaluator {
   public:
-    // Piece values in centipawns
-    static constexpr int PIECE_VALUES[6] = {
-        100,  // Pawn
-        320,  // Knight
-        330,  // Bishop
-        500,  // Rook
-        900,  // Queen
-        20000 // King
-    };
+    // Constants for game ending conditions
+    static constexpr int CHECKMATE = 20000;
+    static constexpr int STALEMATE = 0;
 
-    // Improved pawn table that rewards advancement
-    static constexpr int PAWN_TABLE[64] = {
-        0,   0,   0,   0,   0,   0,   0,   0,   // 1st rank (impossible for pawns)
-        5,   5,   5,   -5,  -5,  5,   5,   5,   // 2nd rank - starting position
-        10,  10,  15,  20,  20,  15,  10,  10,  // 3rd rank - slight advancement bonus
-        15,  15,  20,  30,  30,  20,  15,  15,  // 4th rank - good central control
-        25,  25,  30,  40,  40,  30,  25,  25,  // 5th rank - strong advancement
-        35,  35,  40,  50,  50,  40,  35,  35,  // 6th rank - near promotion
-        60,  60,  60,  60,  60,  60,  60,  60,  // 7th rank - about to promote!
-        100, 100, 100, 100, 100, 100, 100, 100  // 8th rank - promotion (though handled elsewhere)
+    static constexpr int PIECE_VALUES[6] = {
+        10,  // Pawn
+        30,  // Knight
+        30,  // Bishop
+        50,  // Rook
+        100, // Queen
+        1000 // King
     };
 
     static constexpr int KNIGHT_TABLE[64] = {
-        -50, -40, -30, -30, -30, -30, -40, -50, -40, -20, 0,   0,   0,
-        0,   -20, -40, -30, 0,   10,  15,  15,  10,  0,   -30, -30, 5,
-        15,  20,  20,  15,  5,   -30, -30, 0,   15,  20,  20,  15,  0,
-        -30, -30, 5,   10,  15,  15,  10,  5,   -30, -40, -20, 0,   5,
-        5,   0,   -20, -40, -50, -40, -30, -30, -30, -30, -40, -50};
+        1, 1, 1, 1, 1, 1, 1, 1, // rank 8 (index 56-63)
+        1, 2, 2, 2, 2, 2, 2, 1, // rank 7 (index 48-55)
+        1, 2, 3, 3, 3, 3, 2, 1, // rank 6 (index 40-47)
+        1, 2, 3, 4, 4, 3, 2, 1, // rank 5 (index 32-39)
+        1, 2, 3, 4, 4, 3, 2, 1, // rank 4 (index 24-31)
+        1, 2, 3, 3, 3, 3, 2, 1, // rank 3 (index 16-23)
+        1, 2, 2, 2, 2, 2, 2, 1, // rank 2 (index 8-15)
+        1, 1, 1, 1, 1, 1, 1, 1  // rank 1 (index 0-7)
+    };
 
     static constexpr int BISHOP_TABLE[64] = {
-        -20, -10, -10, -10, -10, -10, -10, -20, -10, 0,   0,   0,   0,
-        0,   0,   -10, -10, 0,   5,   10,  10,  5,   0,   -10, -10, 5,
-        5,   10,  10,  5,   5,   -10, -10, 0,   10,  10,  10,  10,  0,
-        -10, -10, 10,  10,  10,  10,  10,  10,  -10, -10, 5,   0,   0,
-        0,   0,   5,   -10, -20, -10, -10, -10, -10, -10, -10, -20};
-
-    static constexpr int ROOK_TABLE[64] = {
-        0,  0, 0, 0, 0, 0, 0, 0,  5,  10, 10, 10, 10, 10, 10, 5,
-        -5, 0, 0, 0, 0, 0, 0, -5, -5, 0,  0,  0,  0,  0,  0,  -5,
-        -5, 0, 0, 0, 0, 0, 0, -5, -5, 0,  0,  0,  0,  0,  0,  -5,
-        -5, 0, 0, 0, 0, 0, 0, -5, 0,  0,  0,  5,  5,  0,  0,  0};
+        4, 3, 2, 1, 1, 2, 3, 4, // rank 8
+        3, 4, 3, 2, 2, 3, 4, 3, // rank 7
+        2, 3, 4, 3, 3, 4, 3, 2, // rank 6
+        1, 2, 3, 4, 4, 3, 2, 1, // rank 5
+        1, 2, 3, 4, 4, 3, 2, 1, // rank 4
+        2, 3, 4, 3, 3, 4, 3, 2, // rank 3
+        3, 4, 3, 2, 2, 3, 4, 3, // rank 2
+        4, 3, 2, 1, 1, 2, 3, 4  // rank 1
+    };
 
     static constexpr int QUEEN_TABLE[64] = {
-        -20, -10, -10, -5,  -5,  -10, -10, -20, -10, 0,   0,   0,  0,
-        0,   0,   -10, -10, 0,   5,   5,   5,   5,   0,   -10, -5, 0,
-        5,   5,   5,   5,   0,   -5,  0,   0,   5,   5,   5,   5,  0,
-        -5,  -10, 5,   5,   5,   5,   5,   0,   -10, -10, 0,   5,  0,
-        0,   0,   0,   -10, -20, -10, -10, -5,  -5,  -10, -10, -20};
+        1, 1, 1, 3, 1, 1, 1, 1, // rank 8
+        1, 2, 3, 3, 3, 1, 1, 1, // rank 7
+        1, 4, 3, 3, 3, 4, 2, 1, // rank 6
+        1, 2, 3, 3, 3, 2, 2, 1, // rank 5
+        1, 2, 3, 3, 3, 2, 2, 1, // rank 4
+        1, 4, 3, 3, 3, 4, 2, 1, // rank 3
+        1, 2, 3, 3, 3, 1, 1, 1, // rank 2
+        1, 1, 1, 3, 1, 1, 1, 1  // rank 1
+    };
 
-    static constexpr int KING_MIDDLE_GAME[64] = {
-        -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50,
-        -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -30, -40,
-        -40, -50, -50, -40, -40, -30, -20, -30, -30, -40, -40, -30, -30,
-        -20, -10, -20, -20, -20, -20, -20, -20, -10, 20,  20,  0,   0,
-        0,   0,   20,  20,  20,  30,  10,  0,   0,   10,  30,  20};
+    static constexpr int ROOK_TABLE[64] = {
+        4, 3, 4, 4, 4, 4, 3, 4, // rank 8
+        4, 4, 4, 4, 4, 4, 4, 4, // rank 7
+        1, 1, 2, 3, 3, 2, 1, 1, // rank 6
+        1, 2, 3, 4, 4, 3, 2, 1, // rank 5
+        1, 2, 3, 4, 4, 3, 2, 1, // rank 4
+        1, 1, 2, 3, 3, 2, 1, 1, // rank 3
+        4, 4, 4, 4, 4, 4, 4, 4, // rank 2
+        4, 3, 4, 4, 4, 4, 3, 4  // rank 1
+    };
 
-    static constexpr int KING_END_GAME[64] = {
-        -50, -40, -30, -20, -20, -30, -40, -50, -30, -20, -10, 0,   0,
-        -10, -20, -30, -30, -10, 20,  30,  30,  20,  -10, -30, -30, -10,
-        30,  40,  40,  30,  -10, -30, -30, -10, 30,  40,  40,  30,  -10,
-        -30, -30, -10, 20,  30,  30,  20,  -10, -30, -30, -30, 0,   0,
-        0,   0,   -30, -30, -50, -30, -30, -30, -30, -30, -30, -50};
+    static constexpr int WHITE_PAWN_TABLE[64] = {
+        10, 10, 10, 10, 10, 10, 10, 10, // rank 8
+        8,  8,  8,  8,  8,  8,  8,  8,  // rank 7
+        5,  6,  6,  7,  7,  6,  6,  5,  // rank 6
+        2,  3,  3,  5,  5,  3,  3,  2,  // rank 5
+        1,  2,  3,  4,  4,  3,  2,  1,  // rank 4
+        1,  1,  2,  3,  3,  2,  1,  1,  // rank 3
+        1,  1,  1,  0,  0,  1,  1,  1,  // rank 2
+        0,  0,  0,  0,  0,  0,  0,  0   // rank 1
+    };
+
+    static constexpr int BLACK_PAWN_TABLE[64] = {
+        0,  0,  0,  0,  0,  0,  0,  0, // rank 8
+        1,  1,  1,  0,  0,  1,  1,  1, // rank 7
+        1,  1,  2,  3,  3,  2,  1,  1, // rank 6
+        1,  2,  3,  4,  4,  3,  2,  1, // rank 5
+        2,  3,  3,  5,  5,  3,  3,  2, // rank 4
+        5,  6,  6,  7,  7,  6,  6,  5, // rank 3
+        8,  8,  8,  8,  8,  8,  8,  8, // rank 2
+        10, 10, 10, 10, 10, 10, 10, 10 // rank 1
+    };
+
+    static constexpr float KING_MIDDLE_GAME[64] = {
+        -3.0, -4.0, -4.0, -5.0, -5.0, -4.0, -4.0, -3.0, -3.0, -4.0, -4.0, -5.0,
+        -5.0, -4.0, -4.0, -3.0, -3.0, -4.0, -4.0, -5.0, -5.0, -4.0, -4.0, -3.0,
+        -2.0, -3.0, -3.0, -4.0, -4.0, -3.0, -3.0, -2.0, -1.0, -2.0, -2.0, -2.0,
+        -2.0, -2.0, -2.0, -1.0, 2.0,  2.0,  0.0,  0.0,  0.0,  0.0,  2.0,  2.0,
+        2.0,  3.0,  1.0,  0.0,  0.0,  1.0,  3.0,  2.0};
+
+    static constexpr float KING_END_GAME[64] = {
+        -5.0, -4.0, -3.0, -2.0, -2.0, -3.0, -4.0, -5.0, -3.0, -2.0, -1.0,
+        0.0,  0.0,  -1.0, -2.0, -3.0, -3.0, -1.0, 2.0,  3.0,  3.0,  2.0,
+        -1.0, -3.0, -3.0, -1.0, 3.0,  4.0,  4.0,  3.0,  -1.0, -3.0, -3.0,
+        -1.0, 3.0,  4.0,  4.0,  3.0,  -1.0, -3.0, -3.0, -1.0, 2.0,  3.0,
+        3.0,  2.0,  -1.0, -3.0, -3.0, -3.0, 0.0,  0.0,  0.0,  0.0,  -3.0,
+        -3.0, -5.0, -3.0, -3.0, -3.0, -3.0, -3.0, -3.0, -5.0};
 
     // Flip square index for black pieces
     static int FlipSquare(int square) {
@@ -79,113 +111,121 @@ class Evaluator {
         for (int i = 0; i < 12; i++) {
             pieceCount += __builtin_popcountll(board.bitboards[i]);
         }
-        return pieceCount <= 10; // Arbitrary threshold
-    }
-
-    // Evaluate passed pawns (pawns with no enemy pawns blocking their path)
-    static int EvaluatePassedPawns(const Board &board) {
-        int score = 0;
-        
-        uint64_t whitePawns = board.bitboards[0];
-        uint64_t blackPawns = board.bitboards[6];
-        
-        // Check white passed pawns
-        uint64_t pawns = whitePawns;
-        while (pawns) {
-            int square = __builtin_ctzll(pawns);
-            pawns &= pawns - 1;
-            
-            int file = square % 8;
-            int rank = square / 8;
-            
-            // Create mask for enemy pawns that could block this pawn
-            uint64_t blockingMask = 0;
-            for (int r = rank + 1; r < 8; r++) {
-                for (int f = std::max(0, file - 1); f <= std::min(7, file + 1); f++) {
-                    blockingMask |= (1ULL << (r * 8 + f));
-                }
-            }
-            
-            // If no black pawns can block this pawn, it's passed
-            if (!(blackPawns & blockingMask)) {
-                int bonus = (rank - 1) * 20; // More bonus for advanced passed pawns
-                score += bonus;
-            }
-        }
-        
-        // Check black passed pawns
-        pawns = blackPawns;
-        while (pawns) {
-            int square = __builtin_ctzll(pawns);
-            pawns &= pawns - 1;
-            
-            int file = square % 8;
-            int rank = square / 8;
-            
-            // Create mask for enemy pawns that could block this pawn
-            uint64_t blockingMask = 0;
-            for (int r = 0; r < rank; r++) {
-                for (int f = std::max(0, file - 1); f <= std::min(7, file + 1); f++) {
-                    blockingMask |= (1ULL << (r * 8 + f));
-                }
-            }
-            
-            // If no white pawns can block this pawn, it's passed
-            if (!(whitePawns & blockingMask)) {
-                int bonus = (6 - rank) * 20; // More bonus for advanced passed pawns
-                score -= bonus;
-            }
-        }
-        
-        return score;
+        return pieceCount <= 10;
     }
 
     // Evaluate pawn structure penalties
     static int EvaluatePawnStructure(const Board &board) {
         int score = 0;
-        
+
         uint64_t whitePawns = board.bitboards[0];
         uint64_t blackPawns = board.bitboards[6];
-        
-        // Penalize doubled pawns
+
+        // Masks for each file
+        const uint64_t FILE_MASKS[8] = {
+            0x0101010101010101ULL, 0x0202020202020202ULL, 0x0404040404040404ULL,
+            0x0808080808080808ULL, 0x1010101010101010ULL, 0x2020202020202020ULL,
+            0x4040404040404040ULL, 0x8080808080808080ULL};
+
         for (int file = 0; file < 8; file++) {
-            uint64_t fileMask = 0x0101010101010101ULL << file;
-            
-            int whitePawnsOnFile = __builtin_popcountll(whitePawns & fileMask);
-            int blackPawnsOnFile = __builtin_popcountll(blackPawns & fileMask);
-            
-            if (whitePawnsOnFile > 1) {
-                score -= (whitePawnsOnFile - 1) * 15; // Penalty for doubled pawns
+            uint64_t fileMask = FILE_MASKS[file];
+            uint64_t whiteFile = whitePawns & fileMask;
+            uint64_t blackFile = blackPawns & fileMask;
+
+            int whiteCount = __builtin_popcountll(whiteFile);
+            int blackCount = __builtin_popcountll(blackFile);
+
+            // Doubled pawns
+            if (whiteCount > 1)
+                score -= (whiteCount - 1) * 15;
+            if (blackCount > 1)
+                score += (blackCount - 1) * 15;
+
+            // Isolated pawns
+            bool whiteIsolated = true;
+            bool blackIsolated = true;
+
+            if (file > 0) {
+                if (whitePawns & FILE_MASKS[file - 1])
+                    whiteIsolated = false;
+                if (blackPawns & FILE_MASKS[file - 1])
+                    blackIsolated = false;
             }
-            if (blackPawnsOnFile > 1) {
-                score += (blackPawnsOnFile - 1) * 15;
+            if (file < 7) {
+                if (whitePawns & FILE_MASKS[file + 1])
+                    whiteIsolated = false;
+                if (blackPawns & FILE_MASKS[file + 1])
+                    blackIsolated = false;
+            }
+
+            if (whiteIsolated && whiteCount > 0)
+                score -= whiteCount * 10;
+            if (blackIsolated && blackCount > 0)
+                score += blackCount * 10;
+        }
+
+        // Passed pawn bonus
+        for (int rank = 1; rank <= 6; ++rank) {
+            for (int file = 0; file < 8; ++file) {
+                int sq = rank * 8 + file;
+                uint64_t mask = 1ULL << sq;
+
+                // White passed pawn
+                if (whitePawns & mask) {
+                    bool blocked = false;
+                    for (int r = rank + 1; r <= 7 && !blocked; ++r) {
+                        for (int f = std::max(0, file - 1);
+                             f <= std::min(7, file + 1); ++f) {
+                            if (blackPawns & (1ULL << (r * 8 + f)))
+                                blocked = true;
+                        }
+                    }
+                    if (!blocked)
+                        score += (7 - rank) * 5 +
+                                 10; // more bonus the closer it is to promotion
+                }
+
+                // Black passed pawn
+                if (blackPawns & mask) {
+                    bool blocked = false;
+                    for (int r = rank - 1; r >= 0 && !blocked; --r) {
+                        for (int f = std::max(0, file - 1);
+                             f <= std::min(7, file + 1); ++f) {
+                            if (whitePawns & (1ULL << (r * 8 + f)))
+                                blocked = true;
+                        }
+                    }
+                    if (!blocked)
+                        score -= rank * 5 + 10;
+                }
             }
         }
-        
+
         return score;
     }
-
-    // Generate attack bitboard for a piece type
 
     // Evaluate piece safety (hanging pieces, defended pieces)
     static int EvaluatePieceSafety(Board &board) {
         int score = 0;
-        
+
         // Check all white pieces
-        for (int pieceType = 0; pieceType < 6; pieceType++) {
+        for (int pieceType = 0; pieceType < 5; pieceType++) {
             uint64_t pieces = board.bitboards[pieceType];
             while (pieces) {
                 int square = __builtin_ctzll(pieces);
                 pieces &= pieces - 1;
-                
-                bool isAttacked = board.IsSquareAttacked(square, false); // Attacked by black
-                bool isDefended = board.IsSquareAttacked(square, true);  // Defended by white
-                
+
+                bool isAttacked =
+                    board.IsSquareAttacked(square, false); // Attacked by black
+                bool isDefended =
+                    board.IsSquareAttacked(square, true); // Defended by white
+
                 if (isAttacked && !isDefended) {
                     // Hanging piece - major penalty!
                     score -= PIECE_VALUES[pieceType];
                 } else if (isAttacked && isDefended) {
-                    // Attacked but defended - small penalty based on piece value difference
+                    // Attacked but defended - small penalty based on piece
+                    // value difference
                     score -= PIECE_VALUES[pieceType] / 10;
                 } else if (isDefended) {
                     // Well defended piece - small bonus
@@ -193,17 +233,19 @@ class Evaluator {
                 }
             }
         }
-        
+
         // Check all black pieces
-        for (int pieceType = 6; pieceType < 12; pieceType++) {
+        for (int pieceType = 6; pieceType < 11; pieceType++) {
             uint64_t pieces = board.bitboards[pieceType];
             while (pieces) {
                 int square = __builtin_ctzll(pieces);
                 pieces &= pieces - 1;
-                
-                bool isAttacked = board.IsSquareAttacked(square, true);  // Attacked by white
-                bool isDefended = board.IsSquareAttacked(square, false); // Defended by black
-                
+
+                bool isAttacked =
+                    board.IsSquareAttacked(square, true); // Attacked by white
+                bool isDefended =
+                    board.IsSquareAttacked(square, false); // Defended by black
+
                 if (isAttacked && !isDefended) {
                     // Hanging piece - major bonus for us!
                     score += PIECE_VALUES[pieceType - 6];
@@ -216,80 +258,24 @@ class Evaluator {
                 }
             }
         }
-        
+
         return score;
     }
 
-    // Evaluate king safety
-    static int EvaluateKingSafety(Board &board) {
-        int score = 0;
-        
-        // Find kings
-        uint64_t whiteKing = board.bitboards[5];
-        uint64_t blackKing = board.bitboards[11];
-        
-        if (whiteKing) {
-            int whiteKingSquare = __builtin_ctzll(whiteKing);
-            int attacksOnWhiteKing = 0;
-            
-            // Count attacks around white king
-            for (int dr = -1; dr <= 1; dr++) {
-                for (int df = -1; df <= 1; df++) {
-                    int rank = (whiteKingSquare / 8) + dr;
-                    int file = (whiteKingSquare % 8) + df;
-                    if (rank >= 0 && rank < 8 && file >= 0 && file < 8) {
-                        int square = rank * 8 + file;
-                        if (board.IsSquareAttacked(square, false)) {
-                            attacksOnWhiteKing++;
-                        }
-                    }
-                }
-            }
-            score -= attacksOnWhiteKing * 10; // Penalty for king in danger
-        }
-        
-        if (blackKing) {
-            int blackKingSquare = __builtin_ctzll(blackKing);
-            int attacksOnBlackKing = 0;
-            
-            // Count attacks around black king
-            for (int dr = -1; dr <= 1; dr++) {
-                for (int df = -1; df <= 1; df++) {
-                    int rank = (blackKingSquare / 8) + dr;
-                    int file = (blackKingSquare % 8) + df;
-                    if (rank >= 0 && rank < 8 && file >= 0 && file < 8) {
-                        int square = rank * 8 + file;
-                        if (board.IsSquareAttacked(square, true)) {
-                            attacksOnBlackKing++;
-                        }
-                    }
-                }
-            }
-            score += attacksOnBlackKing * 10; // Bonus for attacking enemy king
-        }
-        
-        return score;
-    }
+    // Evaluate mobility (number of legal moves)
+    static float EvaluateMobility(Board &board) {
+        std::vector<Move> whiteMoves;
+        board.GenerateAllMoves(whiteMoves, true);
 
-    // Add mobility bonus to discourage repetitive moves
-    static int EvaluateMobility(const Board &board) {
-        // This is a simplified mobility evaluation
-        // In a real engine, you'd count legal moves for each piece type
-        int score = 0;
-        
-        // Bonus for pieces not on their starting squares (encourages development)
-        uint64_t whiteKnights = board.bitboards[1];
-        uint64_t blackKnights = board.bitboards[7];
-        
-        // Starting squares for knights
-        uint64_t whiteKnightStart = (1ULL << 1) | (1ULL << 6);  // b1, g1
-        uint64_t blackKnightStart = (1ULL << 57) | (1ULL << 62); // b8, g8
-        
-        // Bonus for developed knights
-        score += __builtin_popcountll(whiteKnights & ~whiteKnightStart) * 10;
-        score -= __builtin_popcountll(blackKnights & ~blackKnightStart) * 10;
-        
-        return score;
+        std::vector<Move> blackMoves;
+        board.GenerateAllMoves(blackMoves, false);
+
+        long long whiteCount = static_cast<long long>(whiteMoves.size());
+        long long blackCount = static_cast<long long>(blackMoves.size());
+
+        long long diff = whiteCount - blackCount;
+
+        return static_cast<float>(diff);
     }
 
     // Evaluate material balance
@@ -304,7 +290,7 @@ class Evaluator {
         return score;
     }
 
-    // Evaluate piece positions
+    // EvaluatePosition function to use tables as multipliers
     static int EvaluatePosition(const Board &board) {
         int score = 0;
         bool endgame = IsEndgame(board);
@@ -316,59 +302,79 @@ class Evaluator {
                 int square = __builtin_ctzll(pieces);
                 pieces &= pieces - 1; // Clear LSB
 
+                int baseValue = PIECE_VALUES[pieceType];
+                float multiplier = 1.0f;
+
                 switch (pieceType) {
                 case 0:
-                    score += PAWN_TABLE[square];
+                    multiplier = WHITE_PAWN_TABLE[square];
                     break;
                 case 1:
-                    score += KNIGHT_TABLE[square];
+                    multiplier = KNIGHT_TABLE[square];
                     break;
                 case 2:
-                    score += BISHOP_TABLE[square];
+                    multiplier = BISHOP_TABLE[square];
                     break;
                 case 3:
-                    score += ROOK_TABLE[square];
+                    multiplier = ROOK_TABLE[square];
                     break;
                 case 4:
-                    score += QUEEN_TABLE[square];
+                    multiplier = QUEEN_TABLE[square];
                     break;
                 case 5:
-                    score += endgame ? KING_END_GAME[square]
-                                     : KING_MIDDLE_GAME[square];
+                    // For king, use a different approach since values can be
+                    // negative
+                    if (endgame) {
+                        multiplier = (KING_END_GAME[square]);
+                    } else {
+                        multiplier = (KING_MIDDLE_GAME[square]);
+                    }
+                    multiplier = std::max(0.1f, multiplier);
                     break;
                 }
+
+                score += static_cast<int>(baseValue * multiplier);
             }
         }
 
-        // Black pieces (flip tables)
+        // Black pieces
         for (int pieceType = 6; pieceType < 12; pieceType++) {
             uint64_t pieces = board.bitboards[pieceType];
             while (pieces) {
                 int square = __builtin_ctzll(pieces);
                 pieces &= pieces - 1; // Clear LSB
-                int flippedSquare = FlipSquare(square);
+
+                int baseValue = PIECE_VALUES[pieceType - 6];
+                float multiplier = 1.0f;
 
                 switch (pieceType - 6) {
                 case 0:
-                    score -= PAWN_TABLE[flippedSquare];
+                    multiplier = BLACK_PAWN_TABLE[square];
                     break;
                 case 1:
-                    score -= KNIGHT_TABLE[flippedSquare];
+                    multiplier = KNIGHT_TABLE[FlipSquare(square)];
                     break;
                 case 2:
-                    score -= BISHOP_TABLE[flippedSquare];
+                    multiplier = BISHOP_TABLE[FlipSquare(square)];
                     break;
                 case 3:
-                    score -= ROOK_TABLE[flippedSquare];
+                    multiplier = ROOK_TABLE[FlipSquare(square)];
                     break;
                 case 4:
-                    score -= QUEEN_TABLE[flippedSquare];
+                    multiplier = QUEEN_TABLE[FlipSquare(square)];
                     break;
-                case 5:
-                    score -= endgame ? KING_END_GAME[flippedSquare]
-                                     : KING_MIDDLE_GAME[flippedSquare];
-                    break;
+                case 5: {
+                    int flippedSquare = FlipSquare(square);
+                    if (endgame) {
+                        multiplier = (KING_END_GAME[flippedSquare]);
+                    } else {
+                        multiplier = (KING_MIDDLE_GAME[flippedSquare]);
+                    }
+                    multiplier = std::max(0.1f, multiplier);
+                } break;
                 }
+
+                score -= static_cast<int>(baseValue * multiplier);
             }
         }
 
@@ -377,28 +383,43 @@ class Evaluator {
 
     // Main evaluation function
     static int Evaluate(Board &board) {
-        int materialScore = EvaluateMaterial(board);
-        int positionScore = EvaluatePosition(board);
-        int passedPawnScore = EvaluatePassedPawns(board);
+
+        // Check for game ending conditions
+        std::vector<Move> moves = board.GenerateMoves();
+        bool isInCheck = board.IsInCheck(board.whiteToMove);
+
+        if (moves.empty()) {
+            if (isInCheck) {
+                if (board.whiteToMove) {
+                    return -CHECKMATE; // Black wins
+                } else {
+                    return CHECKMATE; // White wins
+                }
+            } else {
+                return STALEMATE;
+            }
+        }
+
+        int materialScore = EvaluateMaterial(board)*5;
+        int positionScore = EvaluatePosition(board)*0.1;
         int pawnStructureScore = EvaluatePawnStructure(board);
-        int mobilityScore = EvaluateMobility(board);
+        int mobilityScore = EvaluateMobility(board) * 2;
         int safetyScore = EvaluatePieceSafety(board);
-        int kingSafetyScore = EvaluateKingSafety(board);
 
-        int totalScore = materialScore + positionScore + passedPawnScore + 
-                        pawnStructureScore + mobilityScore + safetyScore + kingSafetyScore;
+        int totalScore = materialScore + positionScore + pawnStructureScore +
+                         mobilityScore + safetyScore;
 
-        /*std::cout << "Evaluation: " << totalScore 
-                  << " (Material: " << materialScore 
-                  << ", Position: " << positionScore
-                  << ", Passed: " << passedPawnScore
-                  << ", Structure: " << pawnStructureScore
-                  << ", Mobility: " << mobilityScore
-                  << ", Safety: " << safetyScore
-                  << ", King Safety: " << kingSafetyScore << ")" << std::endl;*/
+        /*if (std::abs(totalScore) > 500) {*/
+        /**/
+        /*    std::cout << "Evaluation: " << totalScore*/
+        /*              << " (Material: " << materialScore*/
+        /*              << ", Position: " << positionScore*/
+        /*              << ", Structure: " << pawnStructureScore*/
+        /*              << ", Mobility: " << mobilityScore*/
+        /*              << ", Safety: " << safetyScore << ")" << std::endl;*/
+        /*}*/
 
         // Return score from current player's perspective
         return board.whiteToMove ? totalScore : -totalScore;
     }
 };
-
