@@ -5,3 +5,4 @@
 - [ ] Castling
 - [ ] En-passant
 - [ ] Optimization for larger depths?
+- [ ] Better opening evaluation
