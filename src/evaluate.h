@@ -114,93 +114,86 @@ class Evaluator {
         return pieceCount <= 10;
     }
 
-    // Evaluate pawn structure penalties
+    // Evaluate pawn structure using pure bitboard operations
     static int EvaluatePawnStructure(const Board &board) {
         int score = 0;
-
+        
         uint64_t whitePawns = board.bitboards[0];
         uint64_t blackPawns = board.bitboards[6];
-
-        // Masks for each file
+        
+        // === DOUBLED PAWNS ===
+        // Count pawns on each file and subtract total pawns to get doubled count
         const uint64_t FILE_MASKS[8] = {
             0x0101010101010101ULL, 0x0202020202020202ULL, 0x0404040404040404ULL,
             0x0808080808080808ULL, 0x1010101010101010ULL, 0x2020202020202020ULL,
-            0x4040404040404040ULL, 0x8080808080808080ULL};
-
+            0x4040404040404040ULL, 0x8080808080808080ULL
+        };
+        
+        int whiteDoubled = 0, blackDoubled = 0;
         for (int file = 0; file < 8; file++) {
-            uint64_t fileMask = FILE_MASKS[file];
-            uint64_t whiteFile = whitePawns & fileMask;
-            uint64_t blackFile = blackPawns & fileMask;
-
-            int whiteCount = __builtin_popcountll(whiteFile);
-            int blackCount = __builtin_popcountll(blackFile);
-
-            // Doubled pawns
-            if (whiteCount > 1)
-                score -= (whiteCount - 1) * 15;
-            if (blackCount > 1)
-                score += (blackCount - 1) * 15;
-
-            // Isolated pawns
-            bool whiteIsolated = true;
-            bool blackIsolated = true;
-
-            if (file > 0) {
-                if (whitePawns & FILE_MASKS[file - 1])
-                    whiteIsolated = false;
-                if (blackPawns & FILE_MASKS[file - 1])
-                    blackIsolated = false;
-            }
-            if (file < 7) {
-                if (whitePawns & FILE_MASKS[file + 1])
-                    whiteIsolated = false;
-                if (blackPawns & FILE_MASKS[file + 1])
-                    blackIsolated = false;
-            }
-
-            if (whiteIsolated && whiteCount > 0)
-                score -= whiteCount * 10;
-            if (blackIsolated && blackCount > 0)
-                score += blackCount * 10;
+            int whiteOnFile = __builtin_popcountll(whitePawns & FILE_MASKS[file]);
+            int blackOnFile = __builtin_popcountll(blackPawns & FILE_MASKS[file]);
+            if (whiteOnFile > 1) whiteDoubled += whiteOnFile - 1;
+            if (blackOnFile > 1) blackDoubled += blackOnFile - 1;
         }
-
-        // Passed pawn bonus
-        for (int rank = 1; rank <= 6; ++rank) {
-            for (int file = 0; file < 8; ++file) {
-                int sq = rank * 8 + file;
-                uint64_t mask = 1ULL << sq;
-
-                // White passed pawn
-                if (whitePawns & mask) {
-                    bool blocked = false;
-                    for (int r = rank + 1; r <= 7 && !blocked; ++r) {
-                        for (int f = std::max(0, file - 1);
-                             f <= std::min(7, file + 1); ++f) {
-                            if (blackPawns & (1ULL << (r * 8 + f)))
-                                blocked = true;
-                        }
-                    }
-                    if (!blocked)
-                        score += (7 - rank) * 5 +
-                                 10; // more bonus the closer it is to promotion
-                }
-
-                // Black passed pawn
-                if (blackPawns & mask) {
-                    bool blocked = false;
-                    for (int r = rank - 1; r >= 0 && !blocked; --r) {
-                        for (int f = std::max(0, file - 1);
-                             f <= std::min(7, file + 1); ++f) {
-                            if (whitePawns & (1ULL << (r * 8 + f)))
-                                blocked = true;
-                        }
-                    }
-                    if (!blocked)
-                        score -= rank * 5 + 10;
-                }
-            }
-        }
-
+        score -= whiteDoubled * 15 - blackDoubled * 15;
+        
+        // === ISOLATED PAWNS ===
+        // Pawns with no friendly pawns on adjacent files
+        uint64_t whiteAdjSupport = ((whitePawns & 0xFEFEFEFEFEFEFEFEULL) >> 1) | 
+                                ((whitePawns & 0x7F7F7F7F7F7F7F7FULL) << 1);
+        uint64_t blackAdjSupport = ((blackPawns & 0xFEFEFEFEFEFEFEFEULL) >> 1) | 
+                                ((blackPawns & 0x7F7F7F7F7F7F7F7FULL) << 1);
+        
+        uint64_t whiteIsolated = whitePawns & ~whiteAdjSupport;
+        uint64_t blackIsolated = blackPawns & ~blackAdjSupport;
+        
+        score -= __builtin_popcountll(whiteIsolated) * 10;
+        score += __builtin_popcountll(blackIsolated) * 10;
+        
+        // === PROTECTED PAWNS ===
+        // Pawns defended by other pawns
+        uint64_t whiteProtection = ((whitePawns & 0xFEFEFEFEFEFEFEFEULL) >> 9) | 
+                                ((whitePawns & 0x7F7F7F7F7F7F7F7FULL) >> 7);
+        uint64_t blackProtection = ((blackPawns & 0xFEFEFEFEFEFEFEFEULL) << 7) | 
+                                ((blackPawns & 0x7F7F7F7F7F7F7F7FULL) << 9);
+        
+        uint64_t whiteProtected = whitePawns & whiteProtection;
+        uint64_t blackProtected = blackPawns & blackProtection;
+        
+        score += __builtin_popcountll(whiteProtected) * 8;
+        score -= __builtin_popcountll(blackProtected) * 8;
+        
+        // === PASSED PAWNS ===
+        // White passed pawns: no black pawns in front or diagonally in front
+        uint64_t whitePassed = 0;
+        uint64_t blackFrontSpan = blackPawns;
+        // Fill downward to create "front span" for black pawns
+        blackFrontSpan |= blackFrontSpan >> 8;
+        blackFrontSpan |= blackFrontSpan >> 16;
+        blackFrontSpan |= blackFrontSpan >> 32;
+        // Add diagonal coverage
+        uint64_t blackControl = blackFrontSpan | 
+                            ((blackFrontSpan & 0xFEFEFEFEFEFEFEFEULL) >> 1) |
+                            ((blackFrontSpan & 0x7F7F7F7F7F7F7F7FULL) << 1);
+        whitePassed = whitePawns & ~blackControl;
+        
+        // Black passed pawns: no white pawns behind or diagonally behind  
+        uint64_t blackPassed = 0;
+        uint64_t whiteFrontSpan = whitePawns;
+        // Fill upward to create "front span" for white pawns
+        whiteFrontSpan |= whiteFrontSpan << 8;
+        whiteFrontSpan |= whiteFrontSpan << 16;
+        whiteFrontSpan |= whiteFrontSpan << 32;
+        // Add diagonal coverage
+        uint64_t whiteControl = whiteFrontSpan | 
+                            ((whiteFrontSpan & 0xFEFEFEFEFEFEFEFEULL) >> 1) |
+                            ((whiteFrontSpan & 0x7F7F7F7F7F7F7F7FULL) << 1);
+        blackPassed = blackPawns & ~whiteControl;
+        
+        score += __builtin_popcountll(whitePassed) * 25;
+        score -= __builtin_popcountll(blackPassed) * 25;
+        
         return score;
     }
 
