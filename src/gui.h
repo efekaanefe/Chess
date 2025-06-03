@@ -71,7 +71,7 @@ class ChessGUI {
 
     // AI config
     bool aiEnabled = true;
-    bool aiPlaysAsWhite = false;
+    bool aiPlaysAsWhite = true;
     int aiDepth = 3;
     SearchEngine engine;
 

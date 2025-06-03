@@ -403,7 +403,10 @@ class Evaluator {
         totalScore = static_cast<int>(totalScore * (endgame ? 1.2 : 1.0));
 
         // Return score from current player's perspective
-        return board.whiteToMove ? totalScore : -totalScore;
+        //return board.whiteToMove ? totalScore : -totalScore;
+        // The search algorithm handles minimax perspective switching
+        return totalScore;
+
     }
 
   private:
