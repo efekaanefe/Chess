@@ -379,13 +379,13 @@ class ChessGUI {
             if (file >= 0 && file < 8 && rank >= 0 && rank < 8) {
                 int square = rank * 8 + file;
 
-                char file = 'a' + (square % 8);
-                char rank = '1' + (square / 8);
-                std::cout << "Is " << file << rank << " attacked??? "
-                          << std::boolalpha
-                          << board->IsSquareAttacked(square,
-                                                     !board->whiteToMove)
-                          << std::endl;
+                /*char file = 'a' + (square % 8);*/
+                /*char rank = '1' + (square / 8);*/
+                /*std::cout << "Is " << file << rank << " attacked??? "*/
+                /*          << std::boolalpha*/
+                /*          << board->IsSquareAttacked(square,*/
+                /*                                     !board->whiteToMove)*/
+                /*          << std::endl;*/
 
                 if (selectedSquare == -1) {
                     // Selection stage

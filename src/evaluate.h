@@ -12,11 +12,11 @@ class Evaluator {
 
     static constexpr int PIECE_VALUES[6] = {
         100,  // Pawn
-        320,  // Knight
-        330,  // Bishop
+        310,  // Knight
+        320,  // Bishop
         500,  // Rook
-        975,  // Queen
-        10000 // King
+        900,  // Queen
+        0 // King
     };
 
     static constexpr int WHITE_PAWN_TABLE[64] = {
@@ -306,7 +306,7 @@ class Evaluator {
                     multiplier = std::max(0.1f, multiplier);
                     break;
                 }
-                multiplier = 1;
+                baseValue = 1;
                 score += static_cast<int>(baseValue * multiplier);
             }
         }
@@ -348,6 +348,7 @@ class Evaluator {
                 } break;
                 }
 
+                baseValue = 1;
                 score -= static_cast<int>(baseValue * multiplier);
             }
         }
@@ -375,7 +376,7 @@ class Evaluator {
         }
 
         int materialScore = EvaluateMaterial(board) * 1;
-        int positionScore = EvaluatePosition(board) * 0.01;
+        int positionScore = EvaluatePosition(board) * 1;
         int pawnStructureScore = EvaluatePawnStructure(board) * 0;
         int mobilityScore = EvaluateMobility(board) * 1;
         int safetyScore = EvaluatePieceSafety(board) * 0;

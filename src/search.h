@@ -4,6 +4,7 @@
 #include "evaluate.h"
 #include <algorithm>
 #include <climits>
+#include <cstdio>
 #include <iomanip>
 #include <iostream>
 #include <vector>
@@ -47,6 +48,7 @@ class SearchEngine {
         for (auto &move : validMoves) {
             gs.MakeMove(move);
             std::vector<Move> nextMoves = gs.GenerateMoves();
+            OrderMoves(gs, nextMoves);
 
             // Negamax recursive call - negate result and swap alpha/beta
             int score = -FindMoveNegaMaxAlphaBeta(
