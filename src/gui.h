@@ -71,8 +71,8 @@ class ChessGUI {
 
     // AI config
     bool aiEnabled = true;
-    bool aiPlaysAsWhite = true;
-    int aiDepth = 3;
+    bool aiPlaysAsWhite = false;
+    int aiDepth = 4;
     SearchEngine engine;
 
     void LoadPieceTextures() {

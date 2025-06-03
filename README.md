@@ -9,4 +9,4 @@
 - [ ] Better opening evaluation
 - [ ] Lichess bot api
 - [ ] Time constraint for ai thinking
-- [ ] When AI is playing as white, search looks wrong
+- [x] When AI is playing as white, search looks wrong

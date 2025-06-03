@@ -388,9 +388,9 @@ class Evaluator {
         // Combine scores with weights
         int totalScore = materialScore + 
                          static_cast<int>(pieceSquareScore * 0.3) + 
-                         static_cast<int>(pawnStructureScore * 0.5) + 
-                         static_cast<int>(mobilityScore * 1.0) +
-                         static_cast<int>(safetyScore * 0.1);
+                         static_cast<int>(pawnStructureScore * 0.7) + 
+                         static_cast<int>(mobilityScore * 0.3) +
+                         static_cast<int>(safetyScore * 0.0);
 
         std::cout << "Evaluation: " << totalScore
                   << " (Material: " << materialScore
