@@ -3,7 +3,7 @@
 ### TODOs
 - [ ] Threading when AI is thinking 
 - [x] Promotion
-- [ ] Castling
+- [x] Castling
 - [ ] En-passant
 - [ ] Optimization for larger depths?
 - [ ] Better opening evaluation

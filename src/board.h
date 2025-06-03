@@ -31,6 +31,13 @@ class Board {
         NO_PIECE = -1
     };
 
+    static constexpr int A1 = 0, B1 = 1, C1 = 2, D1 = 3, E1 = 4, F1 = 5, G1 = 6,
+                         H1 = 7;
+    static constexpr int A8 = 56, B8 = 57, C8 = 58, D8 = 59, E8 = 60, F8 = 61,
+                         G8 = 62, H8 = 63;
+
+    uint8_t castlingRights = WK | WQ | BK | BQ;
+
     bool whiteToMove = true;
     uint64_t occupancies[3]; // white, black, all
 
@@ -180,33 +187,82 @@ class Board {
 
         // Store previous state for undo
         move.previousWhiteToMove = whiteToMove;
-        move.capturedPieceType = -1;
+        move.previousCastlingRights = castlingRights;
+        move.capturedPieceType = NO_PIECE;
 
         // Remove captured piece first
         for (int i = 0; i < 12; i++) {
             if (bitboards[i] & toMask) {
                 move.capturedPieceType = i;
                 bitboards[i] &= ~toMask;
+                break;
             }
         }
 
         // Handle promotion
-        if (move.isPromotion && move.promotedPiece != -1) {
-            int pawnIndex = whiteToMove ? WP : BP;
+        if (move.isPromotion && move.promotedPiece != NO_PIECE) {
+            int pawnIndex = move.previousWhiteToMove ? WP : BP;
             // Remove pawn
             bitboards[pawnIndex] &= ~fromMask;
             // Add promoted piece
             bitboards[move.promotedPiece] |= toMask;
-        } else {
-            // Regular move: find and move the piece
+        }
+        // Handle castling
+        else if (move.isCastling) {
+            int kingIndex = whiteToMove ? WK : BK;
+            int rookIndex = whiteToMove ? WR : BR;
+
+            // Move king
+            bitboards[kingIndex] ^= fromMask | toMask;
+
+            // Move rook
+            if (whiteToMove) {
+                if (move.toSquare == G1) { // Kingside
+                    bitboards[rookIndex] ^= (1ULL << H1) | (1ULL << F1);
+                    move.rookFrom = H1;
+                    move.rookTo = F1;
+                } else { // Queenside
+                    bitboards[rookIndex] ^= (1ULL << A1) | (1ULL << D1);
+                    move.rookFrom = A1;
+                    move.rookTo = D1;
+                }
+            } else {
+                if (move.toSquare == G8) { // Kingside
+                    bitboards[rookIndex] ^= (1ULL << H8) | (1ULL << F8);
+                    move.rookFrom = H8;
+                    move.rookTo = F8;
+                } else { // Queenside
+                    bitboards[rookIndex] ^= (1ULL << A8) | (1ULL << D8);
+                    move.rookFrom = A8;
+                    move.rookTo = D8;
+                }
+            }
+            move.isRookMove = true;
+        }
+        // Regular move
+        else {
+            // Find and move the piece
             for (int i = 0; i < 12; i++) {
                 if (bitboards[i] & fromMask) {
-                    bitboards[i] &= ~fromMask;
-                    bitboards[i] |= toMask;
+                    bitboards[i] ^= fromMask | toMask;
                     break;
                 }
             }
         }
+
+        // Update castling rights if king or rook moves
+        if (move.fromSquare == E1)
+            castlingRights &= ~(WK | WQ);
+        if (move.fromSquare == H1)
+            castlingRights &= ~WK;
+        if (move.fromSquare == A1)
+            castlingRights &= ~WQ;
+        if (move.fromSquare == E8)
+            castlingRights &= ~(BK | BQ);
+        if (move.fromSquare == H8)
+            castlingRights &= ~BK;
+        if (move.fromSquare == A8)
+            castlingRights &= ~BQ;
 
         // Toggle turn
         whiteToMove = !whiteToMove;
@@ -215,37 +271,51 @@ class Board {
         UpdateOccupancies();
     }
 
-    // UndoMove using stored move information
     void UndoMove(const Move &move) {
         uint64_t fromMask = 1ULL << move.fromSquare;
         uint64_t toMask = 1ULL << move.toSquare;
 
         // Handle promotion
-        if (move.isPromotion && move.promotedPiece != -1) {
+        if (move.isPromotion && move.promotedPiece != NO_PIECE) {
             // Remove promoted piece
             bitboards[move.promotedPiece] &= ~toMask;
-
             // Restore pawn
             int pawnIndex = move.previousWhiteToMove ? WP : BP;
             bitboards[pawnIndex] |= fromMask;
-        } else {
-            // Regular move: move the piece back
+        }
+        // Handle castling
+        else if (move.isCastling) {
+            int kingIndex = move.previousWhiteToMove ? WK : BK;
+            int rookIndex = move.previousWhiteToMove ? WR : BR;
+
+            // Move king back
+            bitboards[kingIndex] ^= fromMask | toMask;
+
+            // Move rook back
+            if (move.isRookMove) {
+                bitboards[rookIndex] ^=
+                    (1ULL << move.rookFrom) | (1ULL << move.rookTo);
+            }
+        }
+        // Regular move
+        else {
+            // Move the piece back
             for (int i = 0; i < 12; i++) {
                 if (bitboards[i] & toMask) {
-                    bitboards[i] &= ~toMask;  // Remove from destination
-                    bitboards[i] |= fromMask; // Place back at origin
+                    bitboards[i] ^= fromMask | toMask;
                     break;
                 }
             }
         }
 
         // Restore captured piece, if any
-        if (move.capturedPieceType != -1) {
+        if (move.capturedPieceType != NO_PIECE) {
             bitboards[move.capturedPieceType] |= toMask;
         }
 
-        // Restore previous turn
+        // Restore previous state
         whiteToMove = move.previousWhiteToMove;
+        castlingRights = move.previousCastlingRights;
         UpdateOccupancies();
     }
 
@@ -467,7 +537,8 @@ class Board {
 
                     uint64_t toMask = 1ULL << to;
 
-                    // Check if target square is occupied by a friendly piece
+                    // Check if target square is occupied by a friendly
+                    // piece
                     bool isFriendly = white ? (occupancies[0] & toMask)
                                             : (occupancies[1] & toMask);
                     if (isFriendly)
@@ -480,7 +551,8 @@ class Board {
                     // Add move
                     moves.emplace_back(from, to, isCapture);
 
-                    // Stop if we hit any piece (we can't move through pieces)
+                    // Stop if we hit any piece (we can't move through
+                    // pieces)
                     if (occupancies[2] & toMask)
                         break;
                 }
@@ -522,7 +594,8 @@ class Board {
 
                     uint64_t toMask = 1ULL << to;
 
-                    // Check if target square is occupied by a friendly piece
+                    // Check if target square is occupied by a friendly
+                    // piece
                     bool isFriendly = white ? (occupancies[0] & toMask)
                                             : (occupancies[1] & toMask);
                     if (isFriendly)
@@ -535,7 +608,8 @@ class Board {
                     // Add move
                     moves.emplace_back(from, to, isCapture);
 
-                    // Stop if we hit any piece (we can't move through pieces)
+                    // Stop if we hit any piece (we can't move through
+                    // pieces)
                     if (occupancies[2] & toMask)
                         break;
                 }
@@ -578,8 +652,8 @@ class Board {
                             break;
                     }
 
-                    // For diagonal moves, ensure we stay on the diagonal and
-                    // don't wrap
+                    // For diagonal moves, ensure we stay on the diagonal
+                    // and don't wrap
                     if (direction == -9 || direction == -7 || direction == 7 ||
                         direction == 9) {
                         int fileDiff = abs(fromFile - toFile);
@@ -590,7 +664,8 @@ class Board {
 
                     uint64_t toMask = 1ULL << to;
 
-                    // Check if target square is occupied by a friendly piece
+                    // Check if target square is occupied by a friendly
+                    // piece
                     bool isFriendly = white ? (occupancies[0] & toMask)
                                             : (occupancies[1] & toMask);
                     if (isFriendly)
@@ -603,7 +678,8 @@ class Board {
                     // Add move
                     moves.emplace_back(from, to, isCapture);
 
-                    // Stop if we hit any piece (we can't move through pieces)
+                    // Stop if we hit any piece (we can't move through
+                    // pieces)
                     if (occupancies[2] & toMask)
                         break;
                 }
@@ -614,50 +690,107 @@ class Board {
     }
 
     void GenerateKingMoves(std::vector<Move> &moves, bool white) {
-        int kingIndex = white ? 5 : 11; // WK or BK
+        int kingIndex = white ? WK : BK; // WK or BK
         uint64_t kings = bitboards[kingIndex];
 
-        // All 8 directions for king movement
+        int kingSquare = -1;
+        if (kings)
+            kingSquare = __builtin_ctzll(kings);
+        else
+            return;
+
+        // Directions for normal king moves (unchanged)
         const int directions[8] = {-9, -8, -7, -1, 1, 7, 8, 9};
+        for (int direction : directions) {
+            int to = kingSquare + direction;
 
-        while (kings) {
-            int from = __builtin_ctzll(kings);
+            if (to < 0 || to >= 64)
+                continue;
 
-            for (int direction : directions) {
-                int to = from + direction;
+            int fromFile = kingSquare % 8;
+            int toFile = to % 8;
 
-                // Check if the move is valid (on the board)
-                if (to < 0 || to >= 64)
-                    continue;
+            if (abs(fromFile - toFile) > 1)
+                continue;
 
-                int fromFile = from % 8;
-                int toFile = to % 8;
+            uint64_t toMask = 1ULL << to;
 
-                // Prevent wraparound on horizontal and diagonal moves
-                if (abs(fromFile - toFile) > 1)
-                    continue;
+            bool isFriendly =
+                white ? (occupancies[0] & toMask) : (occupancies[1] & toMask);
+            if (isFriendly)
+                continue;
 
-                uint64_t toMask = 1ULL << to;
+            if (IsSquareAttacked(to, !white))
+                continue;
 
-                // Skip move if destination is occupied by a friendly piece
-                bool isFriendly = white ? (occupancies[0] & toMask)
-                                        : (occupancies[1] & toMask);
-                if (isFriendly)
-                    continue;
+            bool isCapture =
+                white ? (occupancies[1] & toMask) : (occupancies[0] & toMask);
+            moves.emplace_back(kingSquare, to, isCapture);
+        }
 
-                // Skip move if target square is attacked
-                if (IsSquareAttacked(to, !white))
-                    continue;
+        // Castling moves
+        if (white) {
+            // White kingside castling (E1 to G1)
+            if (castlingRights & WK) {
+                uint64_t f1 = 1ULL << 5;
+                uint64_t g1 = 1ULL << 6;
 
-                // Check if it's a capture move
-                bool isCapture = white ? (occupancies[1] & toMask)
-                                       : (occupancies[0] & toMask);
+                bool emptyBetween = !(occupancies[2] & (f1 | g1));
+                bool safeSquares = !IsSquareAttacked(4, false) &&
+                                   !IsSquareAttacked(5, false) &&
+                                   !IsSquareAttacked(6, false);
 
-                // Add legal king move
-                moves.emplace_back(from, to, isCapture);
+                if (emptyBetween && safeSquares) {
+                    moves.emplace_back(4, 6, false, false, true); // castling
+                }
             }
 
-            kings &= kings - 1; // clear LSB
+            // White queenside castling (E1 to C1)
+            if (castlingRights & WQ) {
+                uint64_t d1 = 1ULL << 3;
+                uint64_t c1 = 1ULL << 2;
+                uint64_t b1 = 1ULL << 1;
+
+                bool emptyBetween = !(occupancies[2] & (d1 | c1 | b1));
+                bool safeSquares = !IsSquareAttacked(4, false) &&
+                                   !IsSquareAttacked(3, false) &&
+                                   !IsSquareAttacked(2, false);
+
+                if (emptyBetween && safeSquares) {
+                    moves.emplace_back(4, 2, false, false, true); // castling
+                }
+            }
+        } else {
+            // Black kingside castling (E8 to G8)
+            if (castlingRights & BK) {
+                uint64_t f8 = 1ULL << 61;
+                uint64_t g8 = 1ULL << 62;
+
+                bool emptyBetween = !(occupancies[2] & (f8 | g8));
+                bool safeSquares = !IsSquareAttacked(60, true) &&
+                                   !IsSquareAttacked(61, true) &&
+                                   !IsSquareAttacked(62, true);
+
+                if (emptyBetween && safeSquares) {
+                    moves.emplace_back(60, 62, false, false, true); // castling
+                }
+            }
+
+            // Black queenside castling (E8 to C8)
+            if (castlingRights & BQ) {
+                uint64_t d8 = 1ULL << 59;
+                uint64_t c8 = 1ULL << 58;
+                uint64_t b8 = 1ULL << 57;
+
+                bool emptyBetween = !(occupancies[2] & (d8 | c8 | b8));
+                bool safeSquares = !IsSquareAttacked(60, true) &&
+                                   !IsSquareAttacked(59, true) &&
+                                   !IsSquareAttacked(58, true);
+
+                if (emptyBetween && safeSquares) {
+                    moves.emplace_back(60, 58, false, false, true); // castling
+                }
+            }
         }
     }
 
