@@ -190,6 +190,21 @@ class Board {
         move.previousCastlingRights = castlingRights;
         move.capturedPieceType = NO_PIECE;
 
+        // Update castling rights if king or rook moves (do this BEFORE making
+        // the move)
+        if (move.fromSquare == E1)
+            castlingRights &= ~(WK | WQ);
+        if (move.fromSquare == H1)
+            castlingRights &= ~WK;
+        if (move.fromSquare == A1)
+            castlingRights &= ~WQ;
+        if (move.fromSquare == E8)
+            castlingRights &= ~(BK | BQ);
+        if (move.fromSquare == H8)
+            castlingRights &= ~BK;
+        if (move.fromSquare == A8)
+            castlingRights &= ~BQ;
+
         // Remove captured piece first
         for (int i = 0; i < 12; i++) {
             if (bitboards[i] & toMask) {
@@ -201,7 +216,8 @@ class Board {
 
         // Handle promotion
         if (move.isPromotion && move.promotedPiece != NO_PIECE) {
-            int pawnIndex = move.previousWhiteToMove ? WP : BP;
+            int pawnIndex =
+                whiteToMove ? WP : BP; // Use current turn before toggling
             // Remove pawn
             bitboards[pawnIndex] &= ~fromMask;
             // Add promoted piece
@@ -250,20 +266,6 @@ class Board {
             }
         }
 
-        // Update castling rights if king or rook moves
-        if (move.fromSquare == E1)
-            castlingRights &= ~(WK | WQ);
-        if (move.fromSquare == H1)
-            castlingRights &= ~WK;
-        if (move.fromSquare == A1)
-            castlingRights &= ~WQ;
-        if (move.fromSquare == E8)
-            castlingRights &= ~(BK | BQ);
-        if (move.fromSquare == H8)
-            castlingRights &= ~BK;
-        if (move.fromSquare == A8)
-            castlingRights &= ~BQ;
-
         // Toggle turn
         whiteToMove = !whiteToMove;
 
@@ -275,18 +277,21 @@ class Board {
         uint64_t fromMask = 1ULL << move.fromSquare;
         uint64_t toMask = 1ULL << move.toSquare;
 
+        // First toggle turn back to original
+        whiteToMove = move.previousWhiteToMove;
+
         // Handle promotion
         if (move.isPromotion && move.promotedPiece != NO_PIECE) {
             // Remove promoted piece
             bitboards[move.promotedPiece] &= ~toMask;
             // Restore pawn
-            int pawnIndex = move.previousWhiteToMove ? WP : BP;
+            int pawnIndex = whiteToMove ? WP : BP; // Use restored turn
             bitboards[pawnIndex] |= fromMask;
         }
         // Handle castling
         else if (move.isCastling) {
-            int kingIndex = move.previousWhiteToMove ? WK : BK;
-            int rookIndex = move.previousWhiteToMove ? WR : BR;
+            int kingIndex = whiteToMove ? WK : BK;
+            int rookIndex = whiteToMove ? WR : BR;
 
             // Move king back
             bitboards[kingIndex] ^= fromMask | toMask;
@@ -313,9 +318,9 @@ class Board {
             bitboards[move.capturedPieceType] |= toMask;
         }
 
-        // Restore previous state
-        whiteToMove = move.previousWhiteToMove;
+        // Restore castling rights
         castlingRights = move.previousCastlingRights;
+
         UpdateOccupancies();
     }
 

@@ -70,7 +70,7 @@ class ChessGUI {
     GameState gameState = PLAYING;
 
     // AI config
-    bool aiEnabled = false;
+    bool aiEnabled = true;
     bool aiPlaysAsWhite = false;
     int aiDepth = 3;
     SearchEngine engine;

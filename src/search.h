@@ -31,28 +31,29 @@ class SearchEngine {
     int nodesSearched;
     Move nextMove;
 
-    // Negamax Alpha-Beta implementation matching Python structure
-    int FindMoveNegaMaxAlphaBeta(Board &gs, std::vector<Move> &validMoves,
+    // Negamax Alpha-Beta implementation 
+    int FindMoveNegaMaxAlphaBeta(Board &board, std::vector<Move> &validMoves,
                                  int depth, int alpha, int beta,
                                  int turnMultiplier, int maxDepth) {
         nodesSearched++;
 
         if (depth == 0) {
-            return turnMultiplier * Evaluator::Evaluate(gs);
-            /*return Quiescence(gs, alpha, beta, turnMultiplier);*/
+            return turnMultiplier * Evaluator::Evaluate(board);
+            /*return Quiescence(board, alpha, beta, turnMultiplier);*/
         }
 
         int maxScore = -MAX_EVAL;
         Move localBestMove = validMoves.empty() ? Move(0, 0) : validMoves[0];
 
         for (auto &move : validMoves) {
-            gs.MakeMove(move);
-            std::vector<Move> nextMoves = gs.GenerateMoves();
-            OrderMoves(gs, nextMoves);
+            board.MakeMove(move);
+            std::vector<Move> nextMoves = board.GenerateMoves();
+            OrderMoves(board, nextMoves);
 
             // Negamax recursive call - negate result and swap alpha/beta
-            int score = -FindMoveNegaMaxAlphaBeta(
-                gs, nextMoves, depth - 1, -beta, -alpha, -turnMultiplier, maxDepth);
+            int score =
+                -FindMoveNegaMaxAlphaBeta(board, nextMoves, depth - 1, -beta,
+                                          -alpha, -turnMultiplier, maxDepth);
 
             if (score > maxScore) {
                 maxScore = score;
@@ -62,13 +63,18 @@ class SearchEngine {
                 // depth)
                 if (depth == maxDepth) {
                     nextMove = move;
-                    std::cout << "Best move updated: " << move.ToString()
-                              << " Score: " << std::fixed
-                              << std::setprecision(5) << score << std::endl;
+                    /*std::cout << "Best move updated: " << move.ToString()*/
+                    /*          << " Score: " << std::fixed*/
+                    /*          << std::setprecision(5) << score << std::endl;*/
+
+                    std::cout << "Depth: " << depth
+                              << " Move: " << move.ToString()
+                              << " Score: " << score * turnMultiplier
+                              << " (Raw: " << score << ")" << std::endl;
                 }
             }
 
-            gs.UndoMove(move);
+            board.UndoMove(move);
 
             // Alpha-beta pruning logic
             if (maxScore > alpha) {
@@ -167,6 +173,7 @@ class SearchEngine {
   public:
     SearchResult FindBestMove(Board &board, int maxDepth = 6) {
         nodesSearched = 0;
+        nextMove = Move(0, 0); // Reset best move
 
         std::vector<Move> rootMoves = board.GenerateMoves();
         if (rootMoves.empty()) {
@@ -175,30 +182,39 @@ class SearchEngine {
 
         OrderMoves(board, rootMoves);
 
-        // Search at root level directly
-        Move bestMove = rootMoves[0];
-        int bestScore = -MAX_EVAL;
+        int alpha = -MAX_EVAL;
+        int beta = MAX_EVAL;
         int turnMultiplier = board.whiteToMove ? 1 : -1;
+        int bestScore = -MAX_EVAL;
 
         for (auto &move : rootMoves) {
             board.MakeMove(move);
             std::vector<Move> nextMoves = board.GenerateMoves();
+            OrderMoves(board, nextMoves);
 
-            // Search remaining depth
             int score =
-                -FindMoveNegaMaxAlphaBeta(board, nextMoves, maxDepth - 1,
-                                          -MAX_EVAL, MAX_EVAL, -turnMultiplier, maxDepth);
+                -FindMoveNegaMaxAlphaBeta(board, nextMoves, maxDepth - 1, -beta,
+                                          -alpha, -turnMultiplier, maxDepth);
 
             board.UndoMove(move);
 
             if (score > bestScore) {
                 bestScore = score;
-                bestMove = move;
-                std::cout << "Root: " << move.ToString() << " Score: " << score
-                          << std::endl;
+                nextMove = move;
+                std::cout
+                    << "Root: " << move.ToString() << " Score: "
+                    << score *
+                           turnMultiplier // Show score from white's perspective
+                    << std::endl;
+            }
+
+            alpha = std::max(alpha, score);
+            if (alpha >= beta) {
+                break; // Beta cutoff
             }
         }
 
-        return SearchResult(bestMove, bestScore, maxDepth, nodesSearched);
+        return SearchResult(nextMove, bestScore * turnMultiplier, maxDepth,
+                            nodesSearched);
     }
 };

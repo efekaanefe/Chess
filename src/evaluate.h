@@ -1,77 +1,75 @@
 #pragma once
 
 #include "board.h"
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
 class Evaluator {
   public:
     // Constants for game ending conditions
-    static constexpr int CHECKMATE = 20000;
+    static constexpr int CHECKMATE = 10000;
     static constexpr int STALEMATE = 0;
+    static constexpr int DRAW = 0;
 
+    // Piece values (centipawns)
     static constexpr int PIECE_VALUES[6] = {
         100, // Pawn
-        310, // Knight
-        320, // Bishop
+        320, // Knight (slightly higher than bishop)
+        330, // Bishop (slightly higher than knight)
         500, // Rook
         900, // Queen
-        0    // King
+        0    // King (not actually used in material eval)
     };
 
-    static constexpr int WHITE_PAWN_TABLE[64] = {
-        0,   0,   0,   0,   0,   0,   0,   0,  98,  134, 61,  95,  68,
-        126, 34,  -11, -6,  7,   26,  31,  65, 56,  25,  -20, -14, 13,
-        6,   21,  23,  12,  17,  -23, -27, -2, -5,  12,  17,  6,   10,
-        -25, -26, -4,  -4,  -10, 3,   3,   33, -12, -35, -1,  -20, -23,
-        -15, 24,  38,  -22, 0,   0,   0,   0,  0,   0,   0,   0};
-
-    static constexpr int BLACK_PAWN_TABLE[64] = {
-        0,   0,   0,  0,   0,   0,   0,   0,   -22, 0,   0,   0,  0,
-        0,   0,   0,  -15, 24,  38,  -23, -20, -1,  -35, -12, 3,  3,
-        33,  -10, -4, -4,  -26, -25, 10,  6,   17,  12,  -5,  -2, -27,
-        -23, 17,  12, 23,  21,  6,   13,  -14, -20, 25,  56,  65, 31,
-        26,  7,   -6, -11, 34,  126, 68,  95,  61,  134, 98,  0};
+    // Piece-square tables (middlegame)
+    static constexpr int PAWN_TABLE[64] = {
+        0,  0,  0,  0,   0,   0,  0,  0,  50, 50, 50,  50, 50, 50,  50, 50,
+        10, 10, 20, 30,  30,  20, 10, 10, 5,  5,  10,  25, 25, 10,  5,  5,
+        0,  0,  0,  20,  20,  0,  0,  0,  5,  -5, -10, 0,  0,  -10, -5, 5,
+        5,  10, 10, -20, -20, 10, 10, 5,  0,  0,  0,   0,  0,  0,   0,  0};
 
     static constexpr int KNIGHT_TABLE[64] = {
-        -167, -89, -34, -49, 61,   -97, -15, -107, -73, -41, 72,  36,  23,
-        62,   7,   -17, -47, 60,   37,  65,  84,   129, 73,  44,  -9,  17,
-        19,   53,  37,  69,  18,   22,  -13, 4,    16,  13,  28,  19,  21,
-        -8,   -23, -9,  12,  10,   19,  17,  25,   -16, -29, -53, -12, -3,
-        -1,   18,  -14, -19, -105, -21, -58, -33,  -17, -28, -19, -23};
+        -50, -40, -30, -30, -30, -30, -40, -50, -40, -20, 0,   0,   0,
+        0,   -20, -40, -30, 0,   10,  15,  15,  10,  0,   -30, -30, 5,
+        15,  20,  20,  15,  5,   -30, -30, 0,   15,  20,  20,  15,  0,
+        -30, -30, 5,   10,  15,  15,  10,  5,   -30, -40, -20, 0,   5,
+        5,   0,   -20, -40, -50, -40, -30, -30, -30, -30, -40, -50};
 
     static constexpr int BISHOP_TABLE[64] = {
-        -29, 4,  -82, -37, -25, -42, 7,  -8,  -26, 16, -18, -13, 30,
-        59,  18, -47, -16, 37,  43,  40, 35,  50,  37, -2,  -4,  5,
-        19,  50, 37,  37,  7,   -2,  -6, 13,  13,  26, 34,  12,  10,
-        4,   0,  15,  15,  15,  14,  27, 18,  10,  4,  15,  16,  0,
-        7,   21, 13,  4,   -12, 7,   2,  -13, 1,   13, 4,   -16};
+        -20, -10, -10, -10, -10, -10, -10, -20, -10, 0,   0,   0,   0,
+        0,   0,   -10, -10, 0,   5,   10,  10,  5,   0,   -10, -10, 5,
+        5,   10,  10,  5,   5,   -10, -10, 0,   10,  10,  10,  10,  0,
+        -10, -10, 10,  10,  10,  10,  10,  10,  -10, -10, 5,   0,   0,
+        0,   0,   5,   -10, -20, -10, -10, -10, -10, -10, -10, -20};
 
     static constexpr int ROOK_TABLE[64] = {
-        32, 10, 22, 37, 33, 17, 23, 29, 36, 37, 38, 43, 45, 42, 37, 29,
-        8,  14, 25, 30, 30, 25, 18, 8,  0,  7,  17, 22, 22, 17, 8,  1,
-        -2, 4,  10, 14, 14, 10, 4,  -1, -3, 1,  6,  9,  9,  6,  1,  -2,
-        -3, 1,  4,  7,  7,  4,  1,  -3, 8,  8,  8,  13, 13, 8,  8,  8};
+        0,  0, 0, 0, 0, 0, 0, 0,  5,  10, 10, 10, 10, 10, 10, 5,
+        -5, 0, 0, 0, 0, 0, 0, -5, -5, 0,  0,  0,  0,  0,  0,  -5,
+        -5, 0, 0, 0, 0, 0, 0, -5, -5, 0,  0,  0,  0,  0,  0,  -5,
+        -5, 0, 0, 0, 0, 0, 0, -5, 0,  0,  0,  5,  5,  0,  0,  0};
 
     static constexpr int QUEEN_TABLE[64] = {
-        -28, -4,  -2,  -11, -9,  -10, -6,  -28, -33, -4,  -3,  -7,  -6,
-        -2,  -7,  -33, -20, -9,  -2,  -2,  -3,  -5,  -6,  -20, -15, -4,
-        -1,  1,   1,   0,   -5,  -15, -12, -3,  -1,  3,   2,   1,   -2,
-        -12, -13, -5,  -3,  -1,  0,   -2,  -4,  -13, -20, -11, -4,  -3,
-        -4,  -6,  -9,  -20, -28, -15, -10, -6,  -7,  -9,  -13, -28};
+        -20, -10, -10, -5,  -5,  -10, -10, -20, -10, 0,   0,   0,  0,
+        0,   0,   -10, -10, 0,   5,   5,   5,   5,   0,   -10, -5, 0,
+        5,   5,   5,   5,   0,   -5,  0,   0,   5,   5,   5,   5,  0,
+        -5,  -10, 5,   5,   5,   5,   5,   0,   -10, -10, 0,   5,  0,
+        0,   0,   0,   -10, -20, -10, -10, -5,  -5,  -10, -10, -20};
 
     static constexpr int KING_MIDDLE_GAME[64] = {
-        -65, -54, -48, -43, -52, -28, -41, -67, -40, -24, -24, -19, -15,
-        -14, -25, -40, -13, 3,   8,   15,  15,  3,   1,   -9,  7,   16,
-        23,  23,  23,  23,  16,  7,   23,  23,  27,  27,  27,  27,  23,
-        23,  30,  30,  30,  30,  30,  30,  30,  30,  33,  35,  36,  36,
-        36,  35,  33,  33,  7,   10,  9,   9,   9,   10,  7,   7};
+        -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50,
+        -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -30, -40,
+        -40, -50, -50, -40, -40, -30, -20, -30, -30, -40, -40, -30, -30,
+        -20, -10, -20, -20, -20, -20, -20, -20, -10, 20,  20,  0,   0,
+        0,   0,   20,  20,  20,  30,  10,  0,   0,   10,  30,  20};
 
     static constexpr int KING_END_GAME[64] = {
-        -74, -35, -7, -2, -2, -7, -35, -74, -42, -20, -7, 0,  0,  -7, -20, -42,
-        -21, -7,  6,  4,  4,  6,  -7,  -21, -7,  4,   13, 14, 14, 13, 4,   -7,
-        0,   4,   14, 20, 20, 14, 4,   0,   0,   7,   14, 20, 20, 14, 7,   0,
-        -7,  4,   13, 14, 14, 13, 4,   -7,  -21, -7,  6,  4,  4,  6,  -7,  -21};
+        -50, -40, -30, -20, -20, -30, -40, -50, -30, -20, -10, 0,   0,
+        -10, -20, -30, -30, -10, 20,  30,  30,  20,  -10, -30, -30, -10,
+        30,  40,  40,  30,  -10, -30, -30, -10, 30,  40,  40,  30,  -10,
+        -30, -30, -10, 20,  30,  30,  20,  -10, -30, -30, -30, 0,   0,
+        0,   0,   -30, -30, -50, -30, -30, -30, -30, -30, -30, -50};
 
     // Flip square index for black pieces
     static int FlipSquare(int square) {
@@ -80,18 +78,26 @@ class Evaluator {
 
     // Check if position is endgame (few pieces remaining)
     static bool IsEndgame(const Board &board) {
-        int pieceCount = 0;
-        for (int i = 0; i < 12; i++) {
-            pieceCount += __builtin_popcountll(board.bitboards[i]);
-        }
-        return pieceCount <= 10;
+        int majorPieceCount = 0;
+        int queenCount = __builtin_popcountll(board.bitboards[4]) +
+                         __builtin_popcountll(board.bitboards[10]);
+
+        // If queens are off the board, it's likely an endgame
+        if (queenCount == 0)
+            return true;
+
+        // Count major pieces (queens, rooks)
+        majorPieceCount += queenCount;
+        majorPieceCount += __builtin_popcountll(board.bitboards[3]) +
+                           __builtin_popcountll(board.bitboards[9]);
+
+        // If there are 2 or fewer major pieces, it's probably an endgame
+        return majorPieceCount <= 2;
     }
 
-    // Evaluate pawn structure using pure bitboard operations
-    // Evaluate pawn structure penalties
+    // Evaluate pawn structure
     static int EvaluatePawnStructure(const Board &board) {
         int score = 0;
-
         uint64_t whitePawns = board.bitboards[0];
         uint64_t blackPawns = board.bitboards[6];
 
@@ -101,22 +107,23 @@ class Evaluator {
             0x0808080808080808ULL, 0x1010101010101010ULL, 0x2020202020202020ULL,
             0x4040404040404040ULL, 0x8080808080808080ULL};
 
+        // Doubled, isolated, and passed pawn evaluation
         for (int file = 0; file < 8; file++) {
             uint64_t fileMask = FILE_MASKS[file];
 
+            // White pawns
             int whiteCount = __builtin_popcountll(whitePawns & fileMask);
-            int blackCount = __builtin_popcountll(blackPawns & fileMask);
-
-            // Doubled pawns penalty
             if (whiteCount > 1)
-                score -= 20 * (whiteCount - 1);
-            if (blackCount > 1)
-                score += 20 * (blackCount - 1);
+                score -= 20 * (whiteCount - 1); // Doubled pawns
 
-            // Isolated pawn penalty: check adjacent files
+            // Black pawns
+            int blackCount = __builtin_popcountll(blackPawns & fileMask);
+            if (blackCount > 1)
+                score += 20 * (blackCount - 1); // Doubled pawns
+
+            // Isolated pawns
             bool whiteIsolated = true;
             bool blackIsolated = true;
-
             if (file > 0) {
                 whiteIsolated &= !(whitePawns & FILE_MASKS[file - 1]);
                 blackIsolated &= !(blackPawns & FILE_MASKS[file - 1]);
@@ -125,14 +132,13 @@ class Evaluator {
                 whiteIsolated &= !(whitePawns & FILE_MASKS[file + 1]);
                 blackIsolated &= !(blackPawns & FILE_MASKS[file + 1]);
             }
-
             if (whiteIsolated && whiteCount > 0)
-                score -= 15;
+                score -= 12;
             if (blackIsolated && blackCount > 0)
-                score += 15;
+                score += 12;
         }
 
-        // Passed pawn bonus
+        // Passed pawn evaluation
         for (int rank = 1; rank <= 6; ++rank) {
             for (int file = 0; file < 8; ++file) {
                 int sq = rank * 8 + file;
@@ -140,31 +146,51 @@ class Evaluator {
 
                 // White passed pawn
                 if (whitePawns & mask) {
-                    bool blocked = false;
-                    for (int r = rank + 1; r <= 7 && !blocked; ++r) {
+                    bool isPassed = true;
+                    int stopSquare = sq;
+                    while (stopSquare < 56) {
+                        stopSquare += 8;
+                        // Check squares in front and adjacent files
                         for (int f = std::max(0, file - 1);
                              f <= std::min(7, file + 1); ++f) {
-                            if (blackPawns & (1ULL << (r * 8 + f)))
-                                blocked = true;
+                            if (blackPawns &
+                                (1ULL << (stopSquare - 8 * rank + f))) {
+                                isPassed = false;
+                                break;
+                            }
                         }
+                        if (!isPassed)
+                            break;
                     }
-                    if (!blocked)
-                        score += (7 - rank) * 5 +
-                                 10; // more bonus the closer it is to promotion
+                    if (isPassed) {
+                        int bonus =
+                            (7 - rank) * (7 - rank) * 5; // Quadratic bonus
+                        score += bonus;
+                    }
                 }
 
                 // Black passed pawn
                 if (blackPawns & mask) {
-                    bool blocked = false;
-                    for (int r = rank - 1; r >= 0 && !blocked; --r) {
+                    bool isPassed = true;
+                    int stopSquare = sq;
+                    while (stopSquare >= 8) {
+                        stopSquare -= 8;
+                        // Check squares in front and adjacent files
                         for (int f = std::max(0, file - 1);
                              f <= std::min(7, file + 1); ++f) {
-                            if (whitePawns & (1ULL << (r * 8 + f)))
-                                blocked = true;
+                            if (whitePawns &
+                                (1ULL << (stopSquare + 8 * (7 - rank) + f))) {
+                                isPassed = false;
+                                break;
+                            }
                         }
+                        if (!isPassed)
+                            break;
                     }
-                    if (!blocked)
-                        score -= rank * 5 + 10;
+                    if (isPassed) {
+                        int bonus = rank * rank * 5; // Quadratic bonus
+                        score -= bonus;
+                    }
                 }
             }
         }
@@ -172,56 +198,55 @@ class Evaluator {
         return score;
     }
 
-    // Evaluate piece safety (hanging pieces, defended pieces)
+    // Evaluate piece safety
     static int EvaluatePieceSafety(Board &board) {
         int score = 0;
 
-        // Check all white pieces
+        // Evaluate white pieces
         for (int pieceType = 0; pieceType < 6; pieceType++) {
             uint64_t pieces = board.bitboards[pieceType];
             while (pieces) {
                 int square = __builtin_ctzll(pieces);
                 pieces &= pieces - 1;
 
-                bool isAttacked =
-                    board.IsSquareAttacked(square, false); // Attacked by black
-                bool isDefended =
-                    board.IsSquareAttacked(square, true); // Defended by white
+                bool isAttacked = board.IsSquareAttacked(square, false);
+                bool isDefended = board.IsSquareAttacked(square, true);
 
-                if (isAttacked && !isDefended) {
-                    // Hanging piece - major penalty!
-                    score -= PIECE_VALUES[pieceType];
-                } else if (isAttacked && isDefended) {
-                    // Attacked but defended - small penalty based on piece
-                    // value difference
-                    score -= PIECE_VALUES[pieceType] / 10;
+                if (isAttacked) {
+                    if (!isDefended) {
+                        // Hanging piece - big penalty
+                        score -= PIECE_VALUES[pieceType] / 2;
+                    } else {
+                        // Attacked but defended - smaller penalty
+                        score -= PIECE_VALUES[pieceType] / 10;
+                    }
                 } else if (isDefended) {
-                    // Well defended piece - small bonus
+                    // Defended but not attacked - small bonus
                     score += 5;
                 }
             }
         }
 
-        // Check all black pieces
+        // Evaluate black pieces
         for (int pieceType = 6; pieceType < 12; pieceType++) {
             uint64_t pieces = board.bitboards[pieceType];
             while (pieces) {
                 int square = __builtin_ctzll(pieces);
                 pieces &= pieces - 1;
 
-                bool isAttacked =
-                    board.IsSquareAttacked(square, true); // Attacked by white
-                bool isDefended =
-                    board.IsSquareAttacked(square, false); // Defended by black
+                bool isAttacked = board.IsSquareAttacked(square, true);
+                bool isDefended = board.IsSquareAttacked(square, false);
 
-                if (isAttacked && !isDefended) {
-                    // Hanging piece - major bonus for us!
-                    score += PIECE_VALUES[pieceType - 6];
-                } else if (isAttacked && isDefended) {
-                    // Attacked but defended - small bonus
-                    score += PIECE_VALUES[pieceType - 6] / 10;
+                if (isAttacked) {
+                    if (!isDefended) {
+                        // Hanging piece - big bonus for us
+                        score += PIECE_VALUES[pieceType - 6] / 2;
+                    } else {
+                        // Attacked but defended - smaller bonus
+                        score += PIECE_VALUES[pieceType - 6] / 10;
+                    }
                 } else if (isDefended) {
-                    // Well defended enemy piece - small penalty
+                    // Defended but not attacked - small penalty
                     score -= 5;
                 }
             }
@@ -230,120 +255,186 @@ class Evaluator {
         return score;
     }
 
-    // Evaluate mobility (number of legal moves)
-    static float EvaluateMobility(Board &board) {
+    // Evaluate mobility
+    static int EvaluateMobility(Board &board) {
         std::vector<Move> whiteMoves;
         board.GenerateAllMoves(whiteMoves, true);
 
         std::vector<Move> blackMoves;
         board.GenerateAllMoves(blackMoves, false);
 
-        long long whiteCount = static_cast<long long>(whiteMoves.size());
-        long long blackCount = static_cast<long long>(blackMoves.size());
+        // Mobility score is proportional to the square root of move count
+        // difference to avoid overvaluing mobility in positions with many
+        // meaningless moves
+        int mobilityScore = static_cast<int>(
+            10 * (sqrt(whiteMoves.size()) - sqrt(blackMoves.size())));
 
-        long long diff = whiteCount - blackCount;
-
-        return static_cast<float>(diff);
+        return mobilityScore;
     }
 
-    // Evaluate material balance
-    static int EvaluateMaterial(const Board &board) {
+    // Evaluate material balance with tapered evaluation
+    static int EvaluateMaterial(const Board &board, float phase) {
         int score = 0;
-        for (int pieceType = 0; pieceType < 6; pieceType++) {
-            int whitePieces = __builtin_popcountll(board.bitboards[pieceType]);
-            int blackPieces =
-                __builtin_popcountll(board.bitboards[pieceType + 6]);
-            score += (whitePieces - blackPieces) * PIECE_VALUES[pieceType];
-        }
-        return score;
+
+        // Piece values with small bonuses for piece pairs
+        int whiteMaterial = 0;
+        int blackMaterial = 0;
+
+        // Pawns
+        int whitePawns = __builtin_popcountll(board.bitboards[0]);
+        int blackPawns = __builtin_popcountll(board.bitboards[6]);
+        whiteMaterial += whitePawns * PIECE_VALUES[0];
+        blackMaterial += blackPawns * PIECE_VALUES[0];
+
+        // Knights
+        int whiteKnights = __builtin_popcountll(board.bitboards[1]);
+        int blackKnights = __builtin_popcountll(board.bitboards[7]);
+        whiteMaterial += whiteKnights * PIECE_VALUES[1];
+        blackMaterial += blackKnights * PIECE_VALUES[1];
+        // Knight pair bonus
+        if (whiteKnights >= 2)
+            whiteMaterial += 10;
+        if (blackKnights >= 2)
+            blackMaterial += 10;
+
+        // Bishops
+        int whiteBishops = __builtin_popcountll(board.bitboards[2]);
+        int blackBishops = __builtin_popcountll(board.bitboards[8]);
+        whiteMaterial += whiteBishops * PIECE_VALUES[2];
+        blackMaterial += blackBishops * PIECE_VALUES[2];
+        // Bishop pair bonus
+        if (whiteBishops >= 2)
+            whiteMaterial += 30;
+        if (blackBishops >= 2)
+            blackMaterial += 30;
+
+        // Rooks
+        int whiteRooks = __builtin_popcountll(board.bitboards[3]);
+        int blackRooks = __builtin_popcountll(board.bitboards[9]);
+        whiteMaterial += whiteRooks * PIECE_VALUES[3];
+        blackMaterial += blackRooks * PIECE_VALUES[3];
+
+        // Queens
+        int whiteQueens = __builtin_popcountll(board.bitboards[4]);
+        int blackQueens = __builtin_popcountll(board.bitboards[10]);
+        whiteMaterial += whiteQueens * PIECE_VALUES[4];
+        blackMaterial += blackQueens * PIECE_VALUES[4];
+
+        score = whiteMaterial - blackMaterial;
+
+        // Tapered evaluation: in endgame, material becomes more important
+        return static_cast<int>(score * (0.8 + 0.2 * phase));
     }
 
-    // EvaluatePosition function to use tables as multipliers
-    static int EvaluatePosition(const Board &board) {
+    // Evaluate king safety
+    static int EvaluateKingSafety(Board &board, bool endgame) {
         int score = 0;
-        bool endgame = IsEndgame(board);
 
-        // White pieces
-        for (int pieceType = 0; pieceType < 5; pieceType++) {
-            uint64_t pieces = board.bitboards[pieceType];
-            while (pieces) {
-                int square = __builtin_ctzll(pieces);
-                pieces &= pieces - 1; // Clear LSB
+        if (!endgame) {
+            // Evaluate white king safety
+            int whiteKingSquare = __builtin_ctzll(board.bitboards[5]);
+            int whiteKingFile = whiteKingSquare % 8;
+            int whiteKingRank = whiteKingSquare / 8;
 
-                int baseValue = PIECE_VALUES[pieceType];
-                float multiplier = 1.0f;
-
-                switch (pieceType) {
-                case 0:
-                    multiplier = WHITE_PAWN_TABLE[square];
-                    break;
-                case 1:
-                    multiplier = KNIGHT_TABLE[square];
-                    break;
-                case 2:
-                    multiplier = BISHOP_TABLE[square];
-                    break;
-                case 3:
-                    multiplier = ROOK_TABLE[square];
-                    break;
-                case 4:
-                    multiplier = QUEEN_TABLE[square];
-                    break;
-                case 5:
-                    // For king, use a different approach since values can be
-                    // negative
-                    if (endgame) {
-                        multiplier = (KING_END_GAME[square]);
-                    } else {
-                        multiplier = (KING_MIDDLE_GAME[square]);
-                    }
-                    multiplier = std::max(0.1f, multiplier);
-                    break;
+            // Penalty for open files near king
+            uint64_t whitePawns = board.bitboards[0];
+            for (int file = std::max(0, whiteKingFile - 1);
+                 file <= std::min(7, whiteKingFile + 1); file++) {
+                uint64_t fileMask = 0x0101010101010101ULL << file;
+                if (!(whitePawns & fileMask)) {
+                    score -= 20;
                 }
-                baseValue = 1;
-                score += static_cast<int>(baseValue * multiplier);
+            }
+
+            // Evaluate black king safety
+            int blackKingSquare = __builtin_ctzll(board.bitboards[11]);
+            int blackKingFile = blackKingSquare % 8;
+            int blackKingRank = blackKingSquare / 8;
+
+            // Penalty for open files near king
+            uint64_t blackPawns = board.bitboards[6];
+            for (int file = std::max(0, blackKingFile - 1);
+                 file <= std::min(7, blackKingFile + 1); file++) {
+                uint64_t fileMask = 0x0101010101010101ULL << file;
+                if (!(blackPawns & fileMask)) {
+                    score += 20;
+                }
             }
         }
 
-        // Black pieces
-        for (int pieceType = 6; pieceType < 11; pieceType++) {
+        return score;
+    }
+
+    // Evaluate piece-square tables
+    static int EvaluatePieceSquareTables(const Board &board, bool endgame) {
+        int score = 0;
+
+        // White pieces
+        for (int pieceType = 0; pieceType < 6; pieceType++) {
             uint64_t pieces = board.bitboards[pieceType];
             while (pieces) {
                 int square = __builtin_ctzll(pieces);
-                pieces &= pieces - 1; // Clear LSB
+                pieces &= pieces - 1;
 
-                int baseValue = PIECE_VALUES[pieceType - 6];
-                float multiplier = 1.0f;
+                switch (pieceType) {
+                case 0: // Pawn
+                    score += PAWN_TABLE[square];
+                    break;
+                case 1: // Knight
+                    score += KNIGHT_TABLE[square];
+                    break;
+                case 2: // Bishop
+                    score += BISHOP_TABLE[square];
+                    break;
+                case 3: // Rook
+                    score += ROOK_TABLE[square];
+                    break;
+                case 4: // Queen
+                    score += QUEEN_TABLE[square];
+                    break;
+                case 5: // King
+                    if (endgame) {
+                        score += KING_END_GAME[square];
+                    } else {
+                        score += KING_MIDDLE_GAME[square];
+                    }
+                    break;
+                }
+            }
+        }
+
+        // Black pieces (flipped)
+        for (int pieceType = 6; pieceType < 12; pieceType++) {
+            uint64_t pieces = board.bitboards[pieceType];
+            while (pieces) {
+                int square = __builtin_ctzll(pieces);
+                pieces &= pieces - 1;
+                int flippedSquare = FlipSquare(square);
 
                 switch (pieceType - 6) {
-                case 0:
-                    multiplier = BLACK_PAWN_TABLE[square];
+                case 0: // Pawn
+                    score -= PAWN_TABLE[flippedSquare];
                     break;
-                case 1:
-                    multiplier = KNIGHT_TABLE[FlipSquare(square)];
+                case 1: // Knight
+                    score -= KNIGHT_TABLE[flippedSquare];
                     break;
-                case 2:
-                    multiplier = BISHOP_TABLE[FlipSquare(square)];
+                case 2: // Bishop
+                    score -= BISHOP_TABLE[flippedSquare];
                     break;
-                case 3:
-                    multiplier = ROOK_TABLE[FlipSquare(square)];
+                case 3: // Rook
+                    score -= ROOK_TABLE[flippedSquare];
                     break;
-                case 4:
-                    multiplier = QUEEN_TABLE[FlipSquare(square)];
+                case 4: // Queen
+                    score -= QUEEN_TABLE[flippedSquare];
                     break;
-                case 5: {
-                    int flippedSquare = FlipSquare(square);
+                case 5: // King
                     if (endgame) {
-                        multiplier = (KING_END_GAME[flippedSquare]);
+                        score -= KING_END_GAME[flippedSquare];
                     } else {
-                        multiplier = (KING_MIDDLE_GAME[flippedSquare]);
+                        score -= KING_MIDDLE_GAME[flippedSquare];
                     }
-                    multiplier = std::max(0.1f, multiplier);
-                } break;
+                    break;
                 }
-
-                baseValue = 1;
-                score -= static_cast<int>(baseValue * multiplier);
             }
         }
 
@@ -352,43 +443,86 @@ class Evaluator {
 
     // Main evaluation function
     static int Evaluate(Board &board) {
-
-        // Check for game ending conditions
+        // Check for game ending conditions first
         std::vector<Move> moves = board.GenerateMoves();
         bool isInCheck = board.IsInCheck(board.whiteToMove);
 
         if (moves.empty()) {
             if (isInCheck) {
-                if (board.whiteToMove) {
-                    return -CHECKMATE; // Black wins
-                } else {
-                    return CHECKMATE; // White wins
-                }
+                // Checkmate
+                return board.whiteToMove ? -CHECKMATE : CHECKMATE;
             } else {
+                // Stalemate
                 return STALEMATE;
             }
         }
 
-        int materialScore = EvaluateMaterial(board) * 1;
-        int positionScore = EvaluatePosition(board) * 0.1;
-        int pawnStructureScore = EvaluatePawnStructure(board) * 1;
-        int mobilityScore = EvaluateMobility(board) * 2;
-        int safetyScore = EvaluatePieceSafety(board) * 0;
-
-        int totalScore = materialScore + positionScore + pawnStructureScore +
-                         mobilityScore + safetyScore;
-
-        if (std::abs(totalScore) > 500) {
-
-            std::cout << "Evaluation: " << totalScore
-                      << " (Material: " << materialScore
-                      << ", Position: " << positionScore
-                      << ", Structure: " << pawnStructureScore
-                      << ", Mobility: " << mobilityScore
-                      << ", Safety: " << safetyScore << ")" << std::endl;
+        // Check for draw by insufficient material
+        if (IsInsufficientMaterial(board)) {
+            return DRAW;
         }
+
+        bool endgame = IsEndgame(board);
+        float phase = endgame ? 1.0f : 0.0f; // 0.0 = opening, 1.0 = endgame
+
+        // Evaluate all factors
+        int materialScore = EvaluateMaterial(board, phase);
+        int pieceSquareScore = EvaluatePieceSquareTables(board, endgame);
+        int pawnStructureScore = EvaluatePawnStructure(board);
+        int mobilityScore = EvaluateMobility(board);
+        int safetyScore = EvaluatePieceSafety(board);
+        int kingSafetyScore = EvaluateKingSafety(board, endgame);
+
+        // Combine scores with weights
+        int totalScore = materialScore + pieceSquareScore * 1 +
+                         pawnStructureScore * 0.5 + mobilityScore * 0.5 +
+                         safetyScore * 0.1 + kingSafetyScore * 0;
+
+
+        std::cout << "Evaluation: " << totalScore
+                  << " (Material: " << materialScore
+                  << ", Position: " << pieceSquareScore
+                  << ", Structure: " << pawnStructureScore
+                  << ", Mobility: " << mobilityScore
+                  << ", Safety: " << safetyScore << ")" << std::endl;
+
+
+        // Tapered evaluation: in endgame, material and pawn structure become
+        // more important
+        totalScore = static_cast<int>(totalScore * (endgame ? 1.2 : 1.0));
 
         // Return score from current player's perspective
         return board.whiteToMove ? totalScore : -totalScore;
+    }
+
+  private:
+    // Check for insufficient material draw
+    static bool IsInsufficientMaterial(const Board &board) {
+        int whitePieces = __builtin_popcountll(
+            board.bitboards[0] | board.bitboards[1] | board.bitboards[2] |
+            board.bitboards[3] | board.bitboards[4]);
+        int blackPieces = __builtin_popcountll(
+            board.bitboards[6] | board.bitboards[7] | board.bitboards[8] |
+            board.bitboards[9] | board.bitboards[10]);
+
+        // King vs King
+        if (whitePieces == 0 && blackPieces == 0)
+            return true;
+
+        // King + bishop vs King + bishop with bishops on same color
+        if (whitePieces == 1 && blackPieces == 1) {
+            bool whiteBishop = board.bitboards[2] != 0;
+            bool blackBishop = board.bitboards[8] != 0;
+            if (whiteBishop && blackBishop) {
+                int whiteBishopSquare = __builtin_ctzll(board.bitboards[2]);
+                int blackBishopSquare = __builtin_ctzll(board.bitboards[8]);
+                // Bishops on same color
+                if (((whiteBishopSquare + blackBishopSquare) % 2) == 0) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 };
