@@ -37,7 +37,8 @@ class SearchEngine {
         nodesSearched++;
 
         if (depth == 0) {
-            return Quiescence(gs, alpha, beta, turnMultiplier);
+            return turnMultiplier * Evaluator::Evaluate(gs);
+            /*return Quiescence(gs, alpha, beta, turnMultiplier);*/
         }
 
         int maxScore = -MAX_EVAL;
