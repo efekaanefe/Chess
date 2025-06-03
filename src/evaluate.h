@@ -11,12 +11,12 @@ class Evaluator {
     static constexpr int STALEMATE = 0;
 
     static constexpr int PIECE_VALUES[6] = {
-        100,  // Pawn
-        310,  // Knight
-        320,  // Bishop
-        500,  // Rook
-        900,  // Queen
-        0 // King
+        100, // Pawn
+        310, // Knight
+        320, // Bishop
+        500, // Rook
+        900, // Queen
+        0    // King
     };
 
     static constexpr int WHITE_PAWN_TABLE[64] = {
@@ -103,39 +103,33 @@ class Evaluator {
 
         for (int file = 0; file < 8; file++) {
             uint64_t fileMask = FILE_MASKS[file];
-            uint64_t whiteFile = whitePawns & fileMask;
-            uint64_t blackFile = blackPawns & fileMask;
 
-            int whiteCount = __builtin_popcountll(whiteFile);
-            int blackCount = __builtin_popcountll(blackFile);
+            int whiteCount = __builtin_popcountll(whitePawns & fileMask);
+            int blackCount = __builtin_popcountll(blackPawns & fileMask);
 
-            // Doubled pawns
+            // Doubled pawns penalty
             if (whiteCount > 1)
-                score -= (whiteCount - 1) * 15;
+                score -= 20 * (whiteCount - 1);
             if (blackCount > 1)
-                score += (blackCount - 1) * 15;
+                score += 20 * (blackCount - 1);
 
-            // Isolated pawns
+            // Isolated pawn penalty: check adjacent files
             bool whiteIsolated = true;
             bool blackIsolated = true;
 
             if (file > 0) {
-                if (whitePawns & FILE_MASKS[file - 1])
-                    whiteIsolated = false;
-                if (blackPawns & FILE_MASKS[file - 1])
-                    blackIsolated = false;
+                whiteIsolated &= !(whitePawns & FILE_MASKS[file - 1]);
+                blackIsolated &= !(blackPawns & FILE_MASKS[file - 1]);
             }
             if (file < 7) {
-                if (whitePawns & FILE_MASKS[file + 1])
-                    whiteIsolated = false;
-                if (blackPawns & FILE_MASKS[file + 1])
-                    blackIsolated = false;
+                whiteIsolated &= !(whitePawns & FILE_MASKS[file + 1]);
+                blackIsolated &= !(blackPawns & FILE_MASKS[file + 1]);
             }
 
             if (whiteIsolated && whiteCount > 0)
-                score -= whiteCount * 10;
+                score -= 15;
             if (blackIsolated && blackCount > 0)
-                score += blackCount * 10;
+                score += 15;
         }
 
         // Passed pawn bonus
@@ -376,9 +370,9 @@ class Evaluator {
         }
 
         int materialScore = EvaluateMaterial(board) * 1;
-        int positionScore = EvaluatePosition(board) * 1;
-        int pawnStructureScore = EvaluatePawnStructure(board) * 0;
-        int mobilityScore = EvaluateMobility(board) * 1;
+        int positionScore = EvaluatePosition(board) * 0.1;
+        int pawnStructureScore = EvaluatePawnStructure(board) * 1;
+        int mobilityScore = EvaluateMobility(board) * 2;
         int safetyScore = EvaluatePieceSafety(board) * 0;
 
         int totalScore = materialScore + positionScore + pawnStructureScore +
