@@ -2,6 +2,7 @@
 
 ### TODOs
 - [ ] Threading when AI is thinking 
+- [x] Promotion
 - [ ] Castling
 - [ ] En-passant
 - [ ] Optimization for larger depths?

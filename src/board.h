@@ -109,7 +109,7 @@ class Board {
         tablesInitialized = true;
     }
 
-    // Constructor - initializes attack tables
+    // Constructor
     Board() { InitializeAttackTables(); }
 
     void LoadFEN(const std::string &fen) {
@@ -190,16 +190,28 @@ class Board {
             }
         }
 
-        // Move the piece
-        for (int i = 0; i < 12; i++) {
-            if (bitboards[i] & fromMask) {
-                bitboards[i] &= ~fromMask;
-                bitboards[i] |= toMask;
-                break;
+        // Handle promotion
+        if (move.isPromotion && move.promotedPiece != -1) {
+            int pawnIndex = whiteToMove ? WP : BP;
+            // Remove pawn
+            bitboards[pawnIndex] &= ~fromMask;
+            // Add promoted piece
+            bitboards[move.promotedPiece] |= toMask;
+        } else {
+            // Regular move: find and move the piece
+            for (int i = 0; i < 12; i++) {
+                if (bitboards[i] & fromMask) {
+                    bitboards[i] &= ~fromMask;
+                    bitboards[i] |= toMask;
+                    break;
+                }
             }
         }
+
+        // Toggle turn
         whiteToMove = !whiteToMove;
 
+        // Update occupancy bitboards
         UpdateOccupancies();
     }
 
@@ -208,21 +220,31 @@ class Board {
         uint64_t fromMask = 1ULL << move.fromSquare;
         uint64_t toMask = 1ULL << move.toSquare;
 
-        // Move the piece back from toSquare to fromSquare
-        for (int i = 0; i < 12; i++) {
-            if (bitboards[i] & toMask) {
-                bitboards[i] &= ~toMask;  // Remove from destination
-                bitboards[i] |= fromMask; // Place back at origin
-                break;
+        // Handle promotion
+        if (move.isPromotion && move.promotedPiece != -1) {
+            // Remove promoted piece
+            bitboards[move.promotedPiece] &= ~toMask;
+
+            // Restore pawn
+            int pawnIndex = move.previousWhiteToMove ? WP : BP;
+            bitboards[pawnIndex] |= fromMask;
+        } else {
+            // Regular move: move the piece back
+            for (int i = 0; i < 12; i++) {
+                if (bitboards[i] & toMask) {
+                    bitboards[i] &= ~toMask;  // Remove from destination
+                    bitboards[i] |= fromMask; // Place back at origin
+                    break;
+                }
             }
         }
 
-        // Restore captured piece if there was one
+        // Restore captured piece, if any
         if (move.capturedPieceType != -1) {
             bitboards[move.capturedPieceType] |= toMask;
         }
 
-        // Restore previous game state
+        // Restore previous turn
         whiteToMove = move.previousWhiteToMove;
         UpdateOccupancies();
     }
@@ -319,8 +341,9 @@ class Board {
                 if (from / 8 == promotionRank) {
                     // Promotion
                     for (int i = 0; i < 4; ++i) {
+                        int queenPiece = white ? WQ : BQ;
                         moves.emplace_back(from, to, false, false, false, true,
-                                           white ? i : i + 6);
+                                           queenPiece);
                     }
                 } else {
                     moves.emplace_back(from, to);
@@ -352,8 +375,9 @@ class Board {
                 if (isEnemy) {
                     if (from / 8 == promotionRank) {
                         for (int i = 0; i < 4; ++i) {
+                            int queenPiece = white ? WQ : BQ;
                             moves.emplace_back(from, capTo, true, false, false,
-                                               true, white ? i : i + 6);
+                                               true, queenPiece);
                         }
                     } else {
                         moves.emplace_back(from, capTo, true);
@@ -656,9 +680,6 @@ class Board {
             // Find the white king's square
             uint64_t whiteKingBitboard = bitboards[WK];
             if (whiteKingBitboard == 0) {
-                // This case should ideally not happen in a legal game state.
-                // Maybe handle as an error or return true/false based on
-                // context. For now, return false (no king means no check).
                 return false;
             }
             kingSquare = __builtin_ctzll(whiteKingBitboard);
